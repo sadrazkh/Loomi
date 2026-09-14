@@ -7,17 +7,23 @@ using Xunit;
 namespace Loomi.Tests;
 public class FixtureLauncher : IChromiumLauncher, IAsyncDisposable
 {
+    private readonly SemaphoreSlim launching = new(1, 1);
     private IPlaywright? playwright;
-    public IBrowserContext Context { get; private set; } = null!;
+    public IBrowserContext Context => Contexts[^1];
+    /// <summary>One per launch: a pool gives every account a browser of its own.</summary>
+    public List<IBrowserContext> Contexts { get; } = [];
     public List<string> Visits { get; } = [];
     /// <summary>Replaces the ChatGPT stand-in, so tests can serve an interstitial instead.</summary>
     public string? Body { get; init; }
     public async Task<IBrowserContext> LaunchAsync(string profile, BrowserOptions options)
     {
-        playwright = await Playwright.CreateAsync();
+        await launching.WaitAsync();
+        playwright ??= await Playwright.CreateAsync();
         var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
-        Context = await browser.NewContextAsync();
-        await Context.RouteAsync("**/*", async route =>
+        var context = await browser.NewContextAsync();
+        Contexts.Add(context);
+        launching.Release();
+        await context.RouteAsync("**/*", async route =>
         {
             Visits.Add(route.Request.Url);
             await route.FulfillAsync(new() { ContentType = "text/html", Body = Body ?? """
@@ -41,9 +47,9 @@ public class FixtureLauncher : IChromiumLauncher, IAsyncDisposable
                 </script></body></html>
                 """ });
         });
-        return Context;
+        return context;
     }
-    public async ValueTask DisposeAsync() { if (Context?.Browser is { } b) await b.CloseAsync(); playwright?.Dispose(); }
+    public async ValueTask DisposeAsync() { foreach (var open in Contexts) if (open.Browser is { } b) await b.CloseAsync(); playwright?.Dispose(); launching.Dispose(); }
 }
 public class BrowserTests
 {
@@ -56,7 +62,7 @@ public class BrowserTests
         {
             await using var launcher = new FixtureLauncher();
             var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?> { ["Storage:Root"] = root }).Build();
-            await using var service = new BrowserAutomationService(Options.Create(new BrowserOptions { Headless = true, StableSeconds = 1, GenerationTimeoutSeconds = 20 }), config, launcher);
+            await using var service = new BrowserSession("default", Options.Create(new BrowserOptions { Headless = true, StableSeconds = 1, GenerationTimeoutSeconds = 20 }), config, launcher);
             Assert.Equal("Connected", (await service.ConnectAsync(default)).State);
             var statuses = new List<RunStatus>();
             var generated = await service.RunAsync(new() { Prompt = "initial" }, null, null, s => { statuses.Add(s); return Task.CompletedTask; }, default);
@@ -85,7 +91,7 @@ public class BrowserTests
         {
             await using var launcher = new FixtureLauncher();
             var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?> { ["Storage:Root"] = root }).Build();
-            await using var service = new BrowserAutomationService(Options.Create(new BrowserOptions { Headless = true, GenerationTimeoutSeconds = 2 }), config, launcher);
+            await using var service = new BrowserSession("default", Options.Create(new BrowserOptions { Headless = true, GenerationTimeoutSeconds = 2 }), config, launcher);
             var generation = new Generation { Prompt = "timeout" };
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RunAsync(generation, null, null, _ => Task.CompletedTask, default));
             Assert.Equal("GenerationTimeout", ex.Message);
