@@ -32,14 +32,4 @@ public sealed class BrowserAutomationService(BrowserPool pool, IServiceScopeFact
     public async Task<ConnectionStatus> ConnectAsync(CancellationToken ct) => await pool.RunAsync(await AccountAsync(ct), session => session.ConnectAsync(ct));
     public async Task ResetAsync(CancellationToken ct) => await pool.RunAsync(await AccountAsync(ct), session => session.ResetAsync(ct));
     public async Task NewProjectAsync(CancellationToken ct) => await pool.RunAsync(await AccountAsync(ct), session => session.NewProjectAsync(ct));
-    public async Task<BrowserResult> RunAsync(Generation generation, string? parentImage, string? conversation, Func<RunStatus, Task> report, CancellationToken ct)
-    {
-        using var scope = scopes.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var account = await AccountAsync(db, ct);
-        generation.AccountId = account.Id;
-        account.LastUsedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
-        return await pool.RunAsync(account, session => session.RunAsync(generation, parentImage, conversation, report, ct));
-    }
 }

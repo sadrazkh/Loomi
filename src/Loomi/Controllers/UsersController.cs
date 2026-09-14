@@ -4,6 +4,7 @@ using Loomi.Security;
 using Loomi.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 namespace Loomi.Controllers;
 // Nullable on purpose: a non-nullable string here would make [ApiController] answer bad input with its own ProblemDetails instead of a stable error code.
@@ -18,6 +19,8 @@ public record UserDto(Guid Id, string Username, UserRole Role, int DailyQuota, b
 public class UsersController(AppDbContext db, PasswordService passwords, IImageStorage storage) : ControllerBase
 {
     private const int MinPassword = 8, MaxQuota = 10000;
+    /// <summary>SQLITE_CONSTRAINT_UNIQUE. The only unique index this endpoint can violate is the one on NormalizedUsername.</summary>
+    private const int SqliteUniqueViolation = 2067;
     private Viewer Me => Viewer.From(User);
     private static bool ValidName(string name) => name.Length is >= 3 and <= 64 && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');
     /// <summary>Spent today = generations since local midnight that did not fail, counted rather than tallied, so a restart cannot drift it.</summary>
@@ -47,7 +50,10 @@ public class UsersController(AppDbContext db, PasswordService passwords, IImageS
         if (await db.Users.AnyAsync(u => u.NormalizedUsername == normalized, ct)) return Conflict(new { error = "DuplicateUsername" });
         var user = new AppUser { Username = username, NormalizedUsername = normalized, DailyQuota = request.DailyQuota ?? 10 };
         user.PasswordHash = passwords.Hash(user, request.Password!);
-        db.Users.Add(user); await db.SaveChangesAsync(ct);
+        db.Users.Add(user);
+        // The check above cannot see a row a concurrent request has not committed yet; the unique index is what actually decides.
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException e) when (e.InnerException is SqliteException { SqliteExtendedErrorCode: SqliteUniqueViolation }) { return Conflict(new { error = "DuplicateUsername" }); }
         return Created($"/api/users/{user.Id}", UserDto.From(user, 0));
     }
     [HttpPatch("{id:guid}")] public async Task<IActionResult> Update(Guid id, UpdateUser request, CancellationToken ct)
