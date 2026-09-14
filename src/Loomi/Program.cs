@@ -53,6 +53,7 @@ builder.Services.Configure<BrowserOptions>(builder.Configuration.GetSection("Bro
 builder.Services.AddSingleton<BrowserAutomationService>();
 builder.Services.AddSingleton<IChromiumLauncher, ChromiumLauncher>();
 builder.Services.AddSingleton<IImageStorage, ImageStorage>();
+builder.Services.AddSingleton<PasswordService>();
 builder.Services.AddScoped<ProjectRepository>();
 builder.Services.AddScoped<GenerationService>();
 builder.Services.AddHostedService<GenerationWorker>();
@@ -67,6 +68,7 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await db.Database.MigrateAsync();
     await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
+    await OwnerBootstrap.EnsureAsync(db, scope.ServiceProvider.GetRequiredService<PasswordService>(), accessKey);
 }
 app.UseForwardedHeaders();
 app.UseWebSockets();

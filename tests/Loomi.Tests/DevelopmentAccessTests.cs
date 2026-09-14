@@ -32,7 +32,7 @@ public class DevelopmentAccessTests
         Assert.False(session.GetProperty("authenticated").GetBoolean());
         Assert.Equal(DevelopmentAccess.Key, session.GetProperty("devAccessKey").GetString());
         client.DefaultRequestHeaders.Add("X-CSRF-TOKEN", session.GetProperty("csrfToken").GetString());
-        var login = await client.PostAsJsonAsync("/api/session/login", new { accessKey = DevelopmentAccess.Key });
+        var login = await client.PostAsJsonAsync("/api/session/login", new { username = "owner", password = DevelopmentAccess.Key });
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/projects")).StatusCode);
     }
@@ -44,7 +44,7 @@ public class DevelopmentAccessTests
         var session = await client.GetFromJsonAsync<JsonElement>("/api/session");
         Assert.Equal(JsonValueKind.Null, session.GetProperty("devAccessKey").ValueKind);
         client.DefaultRequestHeaders.Add("X-CSRF-TOKEN", session.GetProperty("csrfToken").GetString());
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/session/login", new { accessKey = DevelopmentAccess.Key })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/session/login", new { username = "owner", password = DevelopmentAccess.Key })).StatusCode);
     }
 
     [Fact]
