@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Loomi/Loomi.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Loomi.Tests/Loomi.Tests.csproj" />
+  </Folder>
+</Solution>

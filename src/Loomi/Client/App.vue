@@ -1,0 +1,108 @@
+<script setup>
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
+import { Plus, LayoutGrid, Images, Settings, Search, Moon, Sun, ArrowUp, ArrowLeft, ExternalLink, RefreshCw, ShieldCheck, LogOut, Menu, X, GitBranch, List, Trash2, Image, Layers, FolderOpen, ArrowUpRight, Monitor, Circle, LockKeyhole, Download } from 'lucide-vue-next';
+import { messages } from './i18n';
+import Modal from './components/Modal.vue';
+import GenerationCard from './components/GenerationCard.vue';
+const lang = ref(localStorage.getItem('loomi.lang') || 'en');
+const theme = ref(localStorage.getItem('loomi.theme') || 'dark');
+const t = k => messages[lang.value]?.[k] || messages.en[k] || k;
+const locale = computed(() => lang.value === 'fa' ? 'fa-IR' : 'en-GB');
+watch([lang,theme], () => { document.documentElement.lang = lang.value; document.documentElement.dir = lang.value === 'fa' ? 'rtl':'ltr'; document.documentElement.dataset.lang = lang.value; document.documentElement.dataset.theme = theme.value; localStorage.setItem('loomi.lang',lang.value); localStorage.setItem('loomi.theme',theme.value); }, {immediate:true});
+const authenticated = ref(false), initialized = ref(false), accessKey = ref(''), error = ref(''), busy = ref(false), view = ref('projects'), mobileMenu = ref(false);
+const projects = ref([]), current = ref(null), generations = ref([]), gallery = ref([]), search = ref(''), prompt = ref(''), title = ref(''), modal = ref(null), selected = ref(null), editPrompt = ref(''), layout = ref('timeline'), connected = ref({state:'Disconnected',busy:false}), live = ref(false);
+let csrf='', hub, timer, refreshing=false;
+const filtered = computed(() => projects.value.filter(p => p.title.toLocaleLowerCase().includes(search.value.toLocaleLowerCase())));
+const count = computed(() => projects.value.reduce((sum,p)=>sum+p.generationCount,0));
+const ordered = computed(() => {
+ if(layout.value!=='tree') return generations.value.map(g=>({g,depth:0}));
+ const result=[], seen=new Set();
+ function visit(parent, depth) { for(const g of generations.value.filter(g=>g.parentGenerationId===parent)) { if(seen.has(g.id)) continue; seen.add(g.id); result.push({g,depth}); visit(g.id,depth+1); } }
+ visit(null,0); return result;
+});
+const number = id => generations.value.findIndex(g=>g.id===id)+1;
+async function api(path, method='GET', body) {
+ let response;
+ try { response = await fetch(path,{method,credentials:'same-origin',headers:{'Content-Type':'application/json',...(method!=='GET'?{'X-CSRF-TOKEN':csrf}:{})},body:body?JSON.stringify(body):undefined}); } catch { throw new Error('NetworkError'); }
+ if(response.status===401 && !path.endsWith('/login')) { authenticated.value=false; throw new Error('InvalidAccessKey'); }
+ if(!response.ok) { const payload=await response.json().catch(()=>({})); throw new Error(response.status===429?'RateLimited':payload.error||'ServerError'); }
+ return response.status===204?null:response.json();
+}
+async function action(fn) { if(busy.value) return; busy.value=true; error.value=''; try { await fn(); } catch(e) { error.value=e.message; } finally { busy.value=false; } }
+async function session() { const s=await api('/api/session'); csrf=s.csrfToken; authenticated.value=s.authenticated; }
+async function login() { await action(async()=>{await api('/api/session/login','POST',{accessKey:accessKey.value}); accessKey.value=''; await session(); await start();}); }
+async function logout() { await action(async()=>{await api('/api/session/logout','POST'); await hub?.stop(); authenticated.value=false; projects.value=[]; current.value=null; generations.value=[]; gallery.value=[]; await session();}); }
+async function refresh() {
+ if(!authenticated.value || refreshing) return; refreshing=true;
+ try { const [ps, status]=await Promise.all([api('/api/projects'),api('/api/auth/status')]); projects.value=ps; connected.value=status;
+ if(current.value) { const id=current.value.id; const gs=await api(`/api/projects/${id}/generations`); if(current.value?.id===id) { generations.value=gs; const updated=ps.find(p=>p.id===id); if(updated)current.value=updated; } }
+ } finally { refreshing=false; }
+}
+async function start() {
+ await refresh();
+ if(hub) await hub.stop();
+ hub=new HubConnectionBuilder().withUrl('/hubs/status').withAutomaticReconnect().configureLogging(LogLevel.None).build();
+ hub.on('GenerationUpdated',g=>{if(current.value?.id===g.projectId){const i=generations.value.findIndex(x=>x.id===g.id); if(i>=0)generations.value[i]=g;else generations.value.push(g);} if(g.status==='Completed'||g.status==='Failed')refresh().catch(()=>{});});
+ hub.onreconnecting(()=>live.value=false); hub.onreconnected(()=>{live.value=true;refresh().catch(()=>{});}); hub.onclose(()=>live.value=false);
+ try { await hub.start(); live.value=true; } catch { live.value=false; }
+}
+async function openProject(p) { await action(async()=>{const gs=await api(`/api/projects/${p.id}/generations`); current.value=p; generations.value=gs; view.value='project'; mobileMenu.value=false;}); }
+async function navigate(next) { view.value=next; mobileMenu.value=false; if(next==='gallery') await action(async()=>{gallery.value=(await Promise.all(projects.value.map(p=>api(`/api/projects/${p.id}/generations`)))).flat().filter(g=>g.imageUrl);}); }
+async function createProject() { await action(async()=>{const p=await api('/api/projects','POST',{title:title.value}); current.value=p; generations.value=[]; modal.value=null; title.value=''; view.value='project'; await refresh();}); }
+function newProject() { title.value='';modal.value='new';mobileMenu.value=false; }
+async function connect() { await action(async()=>{connected.value=await api('/api/auth/connect','POST');modal.value='connection';}); }
+async function reset() { await action(async()=>{await api('/api/auth/reset','POST');connected.value=await api('/api/auth/status');modal.value='connection';}); }
+async function submit() { if(!prompt.value.trim()||!current.value) return; await action(async()=>{const g=await api(`/api/projects/${current.value.id}/generate`,'POST',{prompt:prompt.value});generations.value.push(g);prompt.value='';await refresh();}); }
+function operation(kind,g) { selected.value=g;editPrompt.value='';modal.value=kind; }
+async function submitOperation() { await action(async()=>{const g=await api(`/api/generations/${selected.value.id}/${modal.value}`,'POST',{prompt:editPrompt.value});generations.value.push(g);modal.value=null;await refresh();}); }
+async function deleteProject() { await action(async()=>{await api(`/api/projects/${current.value.id}`,'DELETE');current.value=null;generations.value=[];modal.value=null;view.value='projects';await refresh();}); }
+function preview(g){selected.value=g;modal.value='preview';}
+onMounted(async()=>{try{await session();if(authenticated.value)await start();}catch(e){error.value=e.message;}finally{initialized.value=true;} timer=setInterval(()=>refresh().catch(()=>{}),5000);});
+onBeforeUnmount(()=>{clearInterval(timer);hub?.stop();});
+</script>
+
+<template>
+ <div v-if="!authenticated" class="login-page">
+  <div class="login-decoration" aria-hidden="true"><div class="orbital one"></div><div class="orbital two"></div><div class="orbital three"></div><span>L</span></div>
+  <form class="login-panel" @submit.prevent="login"><div class="brand"><span class="brand-mark">L</span><strong>LOOMI</strong><span class="kicker">{{ t('private') }}</span></div><div class="eyebrow">{{ t('workspace') }}</div><h1>{{ t('login') }}</h1><p class="muted">{{ t('loginHelp') }}</p><label for="access">{{ t('accessKey') }}</label><input id="access" v-model="accessKey" type="password" autocomplete="current-password" required maxlength="512"><p v-if="error" role="alert" class="error-text">{{ t(error) }}</p><button class="primary full" :disabled="busy||!initialized"><LockKeyhole/>{{ busy?t('processing'):t('unlock') }}</button><div class="login-footer"><ShieldCheck/>{{ t('private') }}<span class="grow"/><button type="button" @click="lang=lang==='en'?'fa':'en'">{{ lang==='en'?'فارسی':'English' }}</button></div></form>
+ </div>
+ <div v-else class="app-shell">
+  <div v-if="mobileMenu" class="mobile-scrim" @click="mobileMenu=false"></div>
+  <aside :class="{open:mobileMenu}">
+   <div class="brand"><span class="brand-mark">L</span><strong>LOOMI</strong><span class="grow"/><button class="icon-button mobile-only" :aria-label="t('close')" @click="mobileMenu=false"><X/></button></div>
+   <div class="sidebar-action"><button class="primary full" @click="newProject"><Plus/>{{ t('newProject') }}</button></div>
+   <nav><button :class="{active:view==='projects'||view==='project'}" @click="navigate('projects')"><LayoutGrid/>{{ t('projects') }}<span class="grow"/><span class="count">{{ projects.length }}</span></button><button :class="{active:view==='gallery'}" @click="navigate('gallery')"><Images/>{{ t('gallery') }}</button><button :class="{active:view==='settings'}" @click="navigate('settings')"><Settings/>{{ t('settings') }}</button><div class="nav-heading">{{ t('recent') }}</div><button v-for="p in projects.slice(0,8)" :key="p.id" class="recent-project" :class="{selected:current?.id===p.id&&view==='project'}" @click="openProject(p)"><span class="project-swatch"><img v-if="p.coverId" :src="`/api/generations/${p.coverId}/image`" alt=""><FolderOpen v-else/></span><span class="truncate">{{ p.title }}</span></button></nav>
+   <footer class="sidebar-footer"><button class="connection-button" @click="modal='connection'"><i class="status-dot" :class="{on:connected.state==='Connected'}"></i><span><strong>{{ t(connected.state) }}</strong><small>ChatGPT</small></span><span class="grow"/><ExternalLink/></button><div class="preferences"><button :class="{active:lang==='en'}" @click="lang='en'">EN</button><button :class="{active:lang==='fa'}" @click="lang='fa'">فا</button><span class="grow"/><button :aria-label="t('theme')" @click="theme=theme==='dark'?'light':'dark'"><Sun v-if="theme==='dark'"/><Moon v-else/></button></div><div class="owner"><span class="avatar"><ShieldCheck/></span><span><strong>{{ t('private') }}</strong><small>{{ t('local') }}</small></span><span class="grow"/><button class="icon-button" :aria-label="t('logout')" @click="logout"><LogOut/></button></div></footer>
+  </aside>
+  <main>
+   <header class="topbar"><button class="icon-button mobile-only" :aria-label="t('showMenu')" @click="mobileMenu=true"><Menu/></button><span class="breadcrumb">{{ t('workspace') }} <span>/</span> <strong>{{ view==='project'?current?.title:t(view) }}</strong></span><span class="grow"/><span class="live-label"><i class="status-dot" :class="{on:live}"></i>{{ live?t('live'):t('offline') }}</span></header>
+   <div v-if="error" class="toast" role="alert"><span>{{ t(error) }}</span><button class="icon-button" :aria-label="t('close')" @click="error=''"><X/></button></div>
+   <div v-if="view==='projects'" class="page">
+    <div class="page-heading"><div><div class="eyebrow">{{ t('projects') }} / {{ String(projects.length).padStart(2,'0') }}</div><h1>{{ t('allProjects') }}</h1><p>{{ t('intro') }}</p></div><button class="primary" @click="newProject"><Plus/>{{ t('newProject') }}</button></div>
+    <div class="stats"><div><FolderOpen/><span>{{ t('projectCount') }}</span><strong>{{ projects.length.toLocaleString(locale) }}</strong></div><div><Layers/><span>{{ t('imageCount') }}</span><strong>{{ count.toLocaleString(locale) }}</strong></div><div><ShieldCheck/><span>{{ t('local') }}</span><strong class="small-stat">{{ t('private') }}</strong></div></div>
+    <div class="toolbar"><div class="section-label">{{ t('projects') }}</div><span class="grow"/><div class="search"><Search/><input v-model="search" :placeholder="t('search')" :aria-label="t('search')"></div></div>
+    <div v-if="!projects.length" class="empty-state"><div class="empty-art" aria-hidden="true"><div></div><div></div><div><Image/></div></div><div class="eyebrow">LOOMI / 001</div><h2>{{ t('emptyTitle') }}</h2><p>{{ t('emptyBody') }}</p><button class="primary" @click="connected.state==='Connected'?newProject():connect()"><Plus/>{{ connected.state==='Connected'?t('firstProject'):t('connect') }}</button></div>
+    <div v-else-if="!filtered.length" class="empty-state"><Search/><h2>{{ t('noMatches') }}</h2></div>
+    <div v-else class="project-grid"><button v-for="p in filtered" :key="p.id" class="project-card" @click="openProject(p)"><div class="project-cover"><img v-if="p.coverId" :src="`/api/generations/${p.coverId}/image`" :alt="p.title" loading="lazy"><div v-else class="cover-empty"><Image/><span>LOOMI</span></div><span class="cover-count"><Layers/>{{ p.generationCount }}</span></div><div class="project-card-body"><h2 dir="auto">{{ p.title }}</h2><ArrowUpRight/><p>{{ new Date(p.updatedAt).toLocaleDateString(locale) }} <span>·</span> {{ t(p.status) }}</p></div></button><button class="add-project" @click="newProject"><Plus/><span>{{ t('newProject') }}</span></button></div>
+   </div>
+   <div v-else-if="view==='project' && current" class="page project-page">
+    <div class="project-heading"><button class="icon-button" :aria-label="t('back')" @click="navigate('projects')"><ArrowLeft class="directional"/></button><div><div class="eyebrow">{{ t('projects') }}</div><h1 dir="auto">{{ current.title }}</h1></div><span class="grow"/><a v-if="current.conversationUrl" class="button" :href="current.conversationUrl" target="_blank" rel="noopener noreferrer"><ExternalLink/><span>{{ t('viewChat') }}</span></a><button class="icon-button danger" :aria-label="t('delete')" @click="modal='delete'"><Trash2/></button></div>
+    <div class="toolbar"><span class="section-label">{{ t('generations') }} <span class="muted">/ {{ generations.length }}</span></span><span class="grow"/><div class="segmented"><button :class="{active:layout==='timeline'}" @click="layout='timeline'"><List/>{{ t('timeline') }}</button><button :class="{active:layout==='tree'}" @click="layout='tree'"><GitBranch/>{{ t('tree') }}</button></div></div>
+    <div v-if="!generations.length" class="empty-state project-empty"><Image/><h2>{{ t('projectEmpty') }}</h2><p>{{ t('projectEmptyBody') }}</p></div>
+    <div v-else class="generations" :class="layout"><div v-for="item in ordered" :key="item.g.id" class="generation-node" :style="{'--depth':Math.min(item.depth,5)}"><div v-if="layout==='tree'&&item.g.parentGenerationId" class="lineage"><GitBranch/>{{ t('branchFrom') }} {{ String(number(item.g.parentGenerationId)).padStart(2,'0') }}</div><GenerationCard :generation="item.g" :t="t" :number="number(item.g.id)" :parent-number="number(item.g.parentGenerationId)" :locale="locale" @edit="operation('edit',$event)" @branch="operation('branch',$event)" @preview="preview"/></div></div>
+    <form class="composer" @submit.prevent="submit"><textarea v-model="prompt" :placeholder="t('prompt')" :aria-label="t('prompt')" rows="3" maxlength="12000" @keydown.enter.ctrl.prevent="submit" @keydown.enter.meta.prevent="submit"></textarea><footer><span class="composer-state"><i class="status-dot" :class="{on:connected.state==='Connected'}"></i>{{ connected.state==='Connected'?t('connectedHint'):t('notConnectedHint') }}</span><span class="grow"/><small>{{ t('composerHint') }}</small><button class="primary" :disabled="busy||!prompt.trim()||connected.state!=='Connected'"><ArrowUp/>{{ t('send') }}</button></footer></form>
+   </div>
+   <div v-else-if="view==='gallery'" class="page"><div class="page-heading"><div><div class="eyebrow">{{ t('workspace') }}</div><h1>{{ t('gallery') }}</h1><p>{{ t('storageInfo') }}</p></div><span class="count">{{ gallery.length }}</span></div><div v-if="!gallery.length" class="empty-state"><Images/><h2>{{ t('noImages') }}</h2></div><div class="gallery"><button v-for="g in gallery" :key="g.id" class="gallery-image" @click="preview(g)"><img :src="g.imageUrl" :alt="g.prompt" loading="lazy"><p dir="auto">{{ g.prompt }}</p></button></div></div>
+   <div v-else-if="view==='settings'" class="page"><div class="page-heading"><div><div class="eyebrow">{{ t('workspace') }}</div><h1>{{ t('settings') }}</h1></div></div><section class="settings-panel"><h2>{{ t('appearance') }}</h2><div class="setting-row"><span>{{ t('language') }}</span><div class="segmented"><button :class="{active:lang==='en'}" @click="lang='en'">English</button><button :class="{active:lang==='fa'}" @click="lang='fa'">فارسی</button></div></div><div class="setting-row"><span>{{ t('theme') }}</span><div class="segmented"><button :class="{active:theme==='dark'}" @click="theme='dark'"><Moon/>{{ t('dark') }}</button><button :class="{active:theme==='light'}" @click="theme='light'"><Sun/>{{ t('light') }}</button></div></div></section><section class="settings-panel"><h2>{{ t('security') }}</h2><p>{{ t('sessionPrivacy') }}</p><div class="setting-row"><span class="status">{{ t(connected.state) }}</span><button @click="modal='connection'"><Monitor/>{{ t('connection') }}</button></div><div class="setting-row"><span>{{ t('private') }}</span><button @click="logout"><LogOut/>{{ t('logout') }}</button></div></section></div>
+  </main>
+ </div>
+ <Modal v-if="modal" :title="t(modal==='new'?'newProject':modal==='delete'?'delete':modal==='reset'?'reset':modal==='preview'?'preview':modal==='connection'?'connection':modal)" :close-label="t('close')" @close="modal=null">
+  <form v-if="modal==='new'" @submit.prevent="createProject"><p>{{ t('projectHelp') }}</p><label for="project-title">{{ t('title') }}</label><input id="project-title" v-model="title" required maxlength="160"><footer class="modal-actions"><button type="button" @click="modal=null">{{ t('cancel') }}</button><button class="primary" :disabled="busy||!title.trim()">{{ busy?t('processing'):t('create') }}</button></footer></form>
+  <div v-else-if="modal==='connection'"><div class="connection-status"><Monitor/><span><strong>{{ t(connected.state) }}</strong><small>{{ connected.busy?t('busy'):t('server') }}</small></span><i class="status-dot" :class="{on:connected.state==='Connected'}"></i></div><p>{{ t('connectionHelp') }}</p><button class="primary full" :disabled="busy||connected.busy" @click="connect"><RefreshCw/>{{ connected.state==='Disconnected'?t('connect'):t('reconnect') }}</button><a v-if="connected.state!=='Disconnected'" class="button full" :href="connected.desktopUrl" target="_blank" rel="noopener noreferrer"><ExternalLink/>{{ t('openBrowser') }}</a><p class="privacy-note"><ShieldCheck/>{{ t('sessionPrivacy') }}</p><footer class="modal-actions"><button class="danger" :disabled="busy||connected.busy" @click="modal='reset'">{{ t('reset') }}</button><button :disabled="busy" @click="action(refresh)"><RefreshCw/>{{ t('refresh') }}</button></footer></div>
+  <form v-else-if="modal==='edit'||modal==='branch'" @submit.prevent="submitOperation"><div class="parent-preview"><img :src="selected.imageUrl" :alt="selected.prompt"><p dir="auto">{{ selected.prompt }}</p></div><p>{{ t(modal==='edit'?'editHelp':'branchHelp') }}</p><label for="edit-prompt">{{ t('editPrompt') }}</label><textarea id="edit-prompt" v-model="editPrompt" required maxlength="12000" rows="4"></textarea><footer class="modal-actions"><button type="button" @click="modal=null">{{ t('cancel') }}</button><button class="primary" :disabled="busy||!editPrompt.trim()||connected.state!=='Connected'">{{ t(modal) }}</button></footer></form>
+  <div v-else-if="modal==='delete'||modal==='reset'"><p>{{ t(modal==='delete'?'deleteConfirm':'resetConfirm') }}</p><footer class="modal-actions"><button @click="modal=null">{{ t('cancel') }}</button><button class="danger" :disabled="busy" @click="modal==='delete'?deleteProject():reset()">{{ t('confirm') }}</button></footer></div>
+  <div v-else-if="modal==='preview'"><img class="preview-full" :src="selected.imageUrl" :alt="selected.prompt"><p dir="auto">{{ selected.prompt }}</p><a class="button" :href="selected.imageUrl" :download="`loomi-${selected.id}`"><Download/>{{ t('download') }}</a></div>
+  <p v-if="error" role="alert" class="error-text">{{ t(error) }}</p>
+ </Modal>
+</template>

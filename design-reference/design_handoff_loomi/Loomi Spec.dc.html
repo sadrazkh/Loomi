@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=Vazirmatn:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --bg:#0b0d0f; --s1:#111417; --s2:#171b1f; --s3:#1e2328;
+  --line:#242a30; --line2:#323a42;
+  --text:#e9edf0; --muted:#8d979f; --faint:#5d666d;
+  --accent:#7aa5cf; --accent-dim:rgba(122,165,207,.13); --accent-line:rgba(122,165,207,.35);
+  --ok:#63b892; --warn:#d7a15c; --bad:#d47878;
+  --font-ui:'Barlow',system-ui,sans-serif; --font-head:'Barlow Condensed',sans-serif; --font-fa:'Vazirmatn',sans-serif;
+}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--font-ui);-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+a{color:var(--accent);text-decoration:none}
+a:hover{color:var(--text)}
+::selection{background:var(--accent-dim)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+</helmet>
+
+<div style="max-width:1180px;margin:0 auto;padding:56px 28px 100px 28px">
+
+  <header style="border-bottom:1px solid var(--line);padding-bottom:28px;margin-bottom:44px">
+    <div style="display:flex;align-items:center;gap:11px;margin-bottom:16px">
+      <span style="width:26px;height:26px;border:1px solid var(--accent-line);background:var(--accent-dim);color:var(--accent);display:grid;place-items:center;font-family:var(--font-head);font-weight:700;font-size:15px">L</span>
+      <span style="font-family:var(--font-head);font-size:16px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)">Loomi · لومی</span>
+    </div>
+    <h1 style="margin:0;font-family:var(--font-head);font-size:52px;font-weight:600;line-height:1.02;letter-spacing:.01em;text-transform:uppercase">AI Image Generation<br>Workspace — Design Spec</h1>
+    <p style="max-width:620px;font-size:15px;line-height:1.65;color:var(--muted);margin:18px 0 0 0;text-wrap:pretty">Bilingual (EN / فا) creative workspace for prompting, editing and branching images through a driven ChatGPT session. Dark-first, fully mirrored RTL, built to map one-to-one onto Vue 3 components behind an ASP.NET Core API.</p>
+    <div style="display:flex;gap:10px;margin-top:22px;flex-wrap:wrap">
+      <a href="Loomi App.dc.html" style="padding:9px 16px;border:1px solid var(--accent-line);background:var(--accent-dim);color:var(--accent);font-size:13px;font-weight:600">Open the prototype →</a>
+      <span style="padding:9px 16px;border:1px solid var(--line);color:var(--muted);font-size:13px">16 sections</span>
+    </div>
+  </header>
+
+  <section style="margin-bottom:56px">
+    <div style="font-family:var(--font-head);font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:14px">01 — Information architecture</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">
+      <div style="border:1px solid var(--line);background:var(--s1);padding:16px">
+        <div style="font-family:var(--font-head);font-size:19px;letter-spacing:.04em;text-transform:uppercase">Workspace</div>
+        <div style="font-size:12.5px;color:var(--faint);margin:4px 0 12px 0">One account, one workspace</div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted)">
+          <div style="padding:7px 10px;border:1px solid var(--line)">Projects (list · grid)</div>
+          <div style="padding:7px 10px;border:1px solid var(--line)">Favorites · Recent</div>
+          <div style="padding:7px 10px;border:1px solid var(--line)">Settings</div>
+          <div style="padding:7px 10px;border:1px solid var(--line)">Connection</div>
+        </div>
+      </div>
+      <div style="border:1px solid var(--line);background:var(--s1);padding:16px">
+        <div style="font-family:var(--font-head);font-size:19px;letter-spacing:.04em;text-transform:uppercase">Project</div>
+        <div style="font-size:12.5px;color:var(--faint);margin:4px 0 12px 0">The working surface</div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted)">
+          <div style="padding:7px 10px;border:1px solid var(--line)">Tree view — lineage</div>
+          <div style="padding:7px 10px;border:1px solid var(--line)">Timeline view — chronology</div>
+          <div style="padding:7px 10px;border:1px solid var(--line)">Grid view — gallery</div>
+          <div style="padding:7px 10px;border:1px solid var(--accent-line);color:var(--accent)">Prompt composer (persistent)</div>
+        </div>
+      </div>
+      <div style="border:1px solid var(--line);background:var(--s1);padding:16px">
+        <div style="font-family:var(--font-head);font-size:19px;letter-spacing:.04em;text-transform:uppercase">Generation</div>
+        <div style="font-size:12.5px;color:var(--faint);margin:4px 0 12px 0">The atomic object</div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted)">
+          <div style="padding:7px 10px;border:1px solid var(--line)">image · prompt · parent · kind</div>
+          <div style="padding:7px 10px;border:1px solid var(--line)">status · timestamps</div>
+          <div style="padding:7px 10px;border:1px solid var(--line)">Detail panel</div>
+          <div style="padding:7px 10px;border:1px solid var(--line)">Edit · Branch · Download</div>
+        </div>
+      </div>
+    </div>
+    <p style="font-size:13.5px;line-height:1.7;color:var(--muted);max-width:700px;margin-top:16px">Depth never exceeds three levels: Workspace → Project → Generation. Connection and Settings are cross-cutting and reachable from the sidebar on every screen, so a broken session never traps the user inside a flow.</p>
+  </section>
+
+  <section style="margin-bottom:56px">
+    <div style="font-family:var(--font-head);font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:14px">02 — Sitemap &amp; routes</div>
+    <div style="border:1px solid var(--line);background:var(--s1)">
+      <div style="display:grid;grid-template-columns:1.1fr 1fr 1.4fr;gap:0;font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)">
+        <div style="padding:11px 14px">Route</div><div style="padding:11px 14px">Screen</div><div style="padding:11px 14px">Notes</div>
+      </div>
+      <sc-for list="{{ routes }}" as="r" hint-placeholder-count="8">
+        <div style="display:grid;grid-template-columns:1.1fr 1fr 1.4fr;border-bottom:1px solid var(--line);font-size:13px">
+          <div style="padding:11px 14px;color:var(--accent);font-family:'Barlow',monospace">{{ r.path }}</div>
+          <div style="padding:11px 14px">{{ r.screen }}</div>
+          <div style="padding:11px 14px;color:var(--muted)">{{ r.note }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="margin-bottom:56px">
+    <div style="font-family:var(--font-head);font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:14px">03 — User flows</div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <sc-for list="{{ flows }}" as="f" hint-placeholder-count="4">
+        <div style="border:1px solid var(--line);background:var(--s1);padding:16px">
+          <div style="font-size:14px;font-weight:600;margin-bottom:12px">{{ f.name }}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <sc-for list="{{ f.steps }}" as="s" hint-placeholder-count="5">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="padding:7px 12px;border:1px solid {{ s.bc }};background:{{ s.bg }};color:{{ s.fg }};font-size:12.5px">{{ s.label }}</span>
+                <span style="color:var(--faint);font-size:12px">{{ s.arrow }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="margin-bottom:56px">
+    <div style="font-family:var(--font-head);font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:14px">04 — Desktop wireframes</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
+
+      <div>
+        <div style="font-size:12px;color:var(--faint);margin-bottom:8px">Projects · 1440</div>
+        <div style="border:1px solid var(--line2);background:var(--s1);height:250px;display:flex">
+          <div style="width:62px;border-inline-end:1px solid var(--line);padding:8px;display:flex;flex-direction:column;gap:6px">
+            <div style="height:14px;background:var(--s3)"></div>
+            <div style="height:20px;border:1px dashed var(--line2)"></div>
+            <div style="height:10px;background:var(--s3)"></div><div style="height:10px;background:var(--s3)"></div><div style="height:10px;background:var(--s3)"></div>
+            <div style="flex:1"></div><div style="height:18px;border:1px solid var(--line)"></div>
+          </div>
+          <div style="flex:1;padding:10px;display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;gap:8px"><div style="width:90px;height:16px;background:var(--s3)"></div><div style="flex:1"></div><div style="width:110px;height:16px;border:1px solid var(--line)"></div><div style="width:40px;height:16px;border:1px solid var(--line)"></div></div>
+            <div style="flex:1;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr;gap:8px">
+              <div style="border:1px solid var(--line)"></div><div style="border:1px solid var(--line)"></div><div style="border:1px solid var(--line)"></div>
+              <div style="border:1px solid var(--line)"></div><div style="border:1px solid var(--line)"></div><div style="border:1px dashed var(--line2)"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-size:12px;color:var(--faint);margin-bottom:8px">Project · tree + detail + composer</div>
+        <div style="border:1px solid var(--line2);background:var(--s1);height:250px;display:flex">
+          <div style="width:44px;border-inline-end:1px solid var(--line)"></div>
+          <div style="flex:1;display:flex;flex-direction:column">
+            <div style="height:26px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px;padding:0 8px"><div style="width:70px;height:9px;background:var(--s3)"></div><div style="flex:1"></div><div style="width:60px;height:12px;border:1px solid var(--line)"></div></div>
+            <div style="flex:1;position:relative;padding:12px">
+              <div style="position:absolute;left:14px;top:60px;width:52px;height:38px;border:1px solid var(--line2)"></div>
+              <div style="position:absolute;left:92px;top:20px;width:52px;height:38px;border:1px solid var(--line2)"></div>
+              <div style="position:absolute;left:92px;top:100px;width:52px;height:38px;border:1px solid var(--accent-line)"></div>
+              <div style="position:absolute;left:170px;top:20px;width:52px;height:38px;border:1px solid var(--line2)"></div>
+              <svg style="position:absolute;inset:0" width="100%" height="100%"><path d="M66 79 C80 79, 78 39, 92 39" stroke="#323a42" fill="none"></path><path d="M66 79 C80 79, 78 119, 92 119" stroke="#7aa5cf" stroke-dasharray="4 4" fill="none"></path><path d="M144 39 C158 39, 156 39, 170 39" stroke="#323a42" fill="none"></path></svg>
+              <div style="position:absolute;bottom:8px;left:12px;right:12px;height:42px;border:1px solid var(--accent-line);background:var(--s2)"></div>
+            </div>
+          </div>
+          <div style="width:74px;border-inline-start:1px solid var(--line);padding:8px;display:flex;flex-direction:column;gap:7px"><div style="height:44px;border:1px solid var(--line)"></div><div style="height:8px;background:var(--s3)"></div><div style="height:8px;width:70%;background:var(--s3)"></div><div style="height:16px;border:1px solid var(--accent-line)"></div></div>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-size:12px;color:var(--faint);margin-bottom:8px">Login session · noVNC</div>
+        <div style="border:1px solid var(--line2);background:var(--s1);height:250px;display:flex">
+          <div style="width:44px;border-inline-end:1px solid var(--line)"></div>
+          <div style="flex:1;padding:10px;display:flex;gap:10px">
+            <div style="flex:1;border:1px solid var(--line);display:flex;flex-direction:column">
+              <div style="height:18px;border-bottom:1px solid var(--line);background:var(--s2)"></div>
+              <div style="flex:1;background:var(--s2);display:grid;place-items:center;color:var(--faint);font-size:11px">remote browser</div>
+            </div>
+            <div style="width:96px;display:flex;flex-direction:column;gap:7px">
+              <div style="height:74px;border:1px solid var(--line)"></div>
+              <div style="height:22px;border:1px solid var(--accent-line);background:var(--accent-dim)"></div>
+              <div style="height:22px;border:1px solid var(--line)"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section style="margin-bottom:56px">
+    <div style="font-family:var(--font-head);font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:14px">05 — Mobile wireframes</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap">
+      <sc-for list="{{ mobileWires }}" as="m" hint-placeholder-count="4">
+        <div>
+          <div style="font-size:12px;color:var(--faint);margin-bottom:8px">{{ m.name }}</div>
+          <div style="width:168px;height:320px;border:1px solid var(--line2);background:var(--s1);padding:8px;display:flex;flex-direction:column;gap:7px">
+            <div style="height:14px;border-bottom:1px solid var(--line);display:flex;gap:6px;align-items:center"><div style="width:12px;height:8px;background:var(--s3)"></div><div style="flex:1;height:8px;background:var(--s3)"></div></div>
+            <sc-for list="{{ m.blocks }}" as="b" hint-placeholder-count="3">
+              <div style="height:{{ b.h }};border:1px {{ b.style }} {{ b.color }};background:{{ b.fill }}"></div>
+            </sc-for>
+            <div style="flex:1"></div>
+            <div style="height:34px;border:1px solid var(--accent-line);background:var(--accent-dim)"></div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <p style="font-size:13.5px;line-height:1.7;color:var(--muted);max-width:700px;margin-top:16px">On mobile the branch graph collapses into a single-column timeline where lineage is expressed by indentation plus a “from #12” chip — a 2D graph is unreadable under 640px. The composer docks above the keyboard and keeps its context chip.</p>
+  </section>
+
+  <section style="margin-bottom:56px">
+    <div style="font-family:var(--font-head);font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:14px">06 — Design tokens</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px">
+      <sc-for list="{{ tokenGroups }}" as="g" hint-placeholder-count="6">
+        <div style="border:1px solid var(--line);background:var(--s1);padding:15px">
+          <div style="font-family:var(--font-head);font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:12px">{{ g.name }}</div>
+          <sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="5">
+            <div style="display:flex;align-items:baseline;gap:10px;padding:4px 0;border-bottom:1px solid var(--line)">
+              <span style="font-size:12px;color:var(--accent);flex:0 0 auto;min-width:96px">{{ r.k }}</span>
+              <span style="font-size:12.5px;color:var(--muted);text-align:end;flex:1">{{ r.v }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="margin-bottom:56px">
+    <div style="font-family:var(--font-head);font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:14px">07 — Color system</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div style="border:1px solid var(--line);background:var(--s1);padding:16px">
+        <div style="font-family:var(--font-head);font-size:16px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px">Dark (default)</div>
+        <sc-for list="{{ darkColors }}" as="c" hint-placeholder-count="8">
+          <div style="display:flex;align-items:center;gap:11px;padding:5px 0">
+            <span style="width:30px;height:22px;flex:0 0 auto;background:{{ c.hex }};border:1px solid var(--line2)"></span>
+            <span style="font-size:12.5px;flex:1">{{ c.name }}</span>
+            <span style="font-size:11.5px;color:var(--faint)">{{ c.hex }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="border:1px solid var(--line);background:#ffffff;color:#191c1f;padding:16px">
+        <div style="font-family:var(--font-head);font-size:16px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px">Light</div>
+        <sc-for list="{{ lightColors }}" as="c" hint-placeholder-count="8">
+          <div style="display:flex;align-items:center;gap:11px;padding:5px 0">
+            <span style="width:30px;height:22px;flex:0 0 auto;background:{{ c.hex }};border:1px solid #c7ccd2"></span>
+            <span style="font-size:12.5px;flex:1">{{ c.name }}</span>
+            <span style="font-size:11.5px;color:#5f6a73">{{ c.hex }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    <p style="font-size:13.5px;line-height:1.7;color:var(--muted);max-width:760px;margin-top:16px">Status is never carried by hue alone: every status pairs a color with a glyph (✓ ◐ ! ◔) and a written label, so the tree stays readable for color-blind users and in grayscale print. Body text holds ≥ 4.5:1 on every surface; the steel accent is used at ≥ 3:1 for chrome and large type only.</p>
+  </section>
+
+  <section style="margin-bottom:56px">
+    <div style="font-family:var(--font-head);font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:14px">08 — Typography</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div style="border:1px solid var(--line);background:var(--s1);padding:20px">
+        <div style="font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:14px">Latin — Barlow Condensed / Barlow</div>
+        <div style="font-family:var(--font-head);font-size:42px;font-weight:600;line-height:1;text-transform:uppercase">Saffron Packaging</div>
+        <div style="font-family:var(--font-head);font-size:24px;font-weight:500;margin-top:10px">Generation #12 · Completed</div>
+        <p style="font-size:14px;line-height:1.65;color:var(--muted);margin-top:12px">Saffron jar on matte stone, soft north light, editorial packaging shot. Body copy is Barlow 400 at 14–15px with 1.6 line-height.</p>
+        <div style="font-size:12px;color:var(--faint);margin-top:10px">Condensed headings, normal-width body. Numerals tabular in metrics.</div>
+      </div>
+      <div dir="rtl" style="border:1px solid var(--line);background:var(--s1);padding:20px;font-family:var(--font-fa)">
+        <div style="font-size:11.5px;letter-spacing:.06em;color:var(--faint);margin-bottom:14px">فارسی — وزیرمتن</div>
+        <div style="font-size:34px;font-weight:700;line-height:1.35">بسته‌بندی زعفران</div>
+        <div style="font-size:20px;font-weight:500;margin-top:10px">تولید #۱۲ · تکمیل شد</div>
+        <p style="font-size:14.5px;line-height:1.95;color:var(--muted);margin-top:12px">وزیرمتن برای رابط فارسی انتخاب شده: مدرن، خوانا در اندازه‌های کوچک، با ارقام فارسی و وزن‌های کامل. خط‌فاصله در فارسی ۱.۹ است، نه ۱.۶.</p>
+        <div style="font-size:12.5px;color:var(--faint);margin-top:10px">فارسی نسخه‌ی Condensed ندارد؛ به‌جای آن وزن ۷۰۰ نقش تیتر را بازی می‌کند.</div>
+      </div>
+    </div>
+    <div style="border:1px solid var(--line);background:var(--s1);margin-top:14px;padding:15px;font-size:13.5px;line-height:1.7;color:var(--muted)">Persian lines run 18–22% taller than Latin and drop letter-spacing to zero. Headings in Persian use Vazirmatn 700 rather than a condensed face, and all uppercase transforms are disabled under <span style="color:var(--accent)">:root[data-lang="fa"]</span>.</div>
+  </section>
+
+  <section style="margin-bottom:56px">
+    <div style="font-family:var(--font-head);font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:14px">09 — RTL / LTR behaviour</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <div style="border:1px solid var(--line);background:var(--s1);padding:14px">
+        <div style="font-size:12px;color:var(--faint);margin-bottom:10px">LTR — sidebar leading (left)</div>
+        <div style="height:118px;border:1px solid var(--line2);display:flex">
+          <div style="width:50px;background:var(--s3)"></div>
+          <div style="flex:1;padding:8px;display:flex;flex-direction:column;gap:6px"><div style="height:12px;width:60%;background:var(--s2)"></div><div style="flex:1;border:1px dashed var(--line)"></div></div>
+          <div style="width:34px;border-inline-start:1px solid var(--line)"></div>
+        </div>
+      </div>
+      <div style="border:1px solid var(--line);background:var(--s1);padding:14px">
+        <div dir="rtl" style="font-size:12px;color:var(--faint);margin-bottom:10px;font-family:var(--font-fa)">RTL — سایدبار سمت راست</div>
+        <div dir="rtl" style="height:118px;border:1px solid var(--line2);display:flex">
+          <div style="width:50px;background:var(--s3)"></div>
+          <div style="flex:1;padding:8px;display:flex;flex-direction:column;gap:6px"><div style="height:12px;width:60%;background:var(--s2)"></div><div style="flex:1;border:1px dashed var(--line)"></div></div>
+          <div style="width:34px;border-inline-start:1px solid var(--line)"></div>
+        </div>
+      </div>
+    </div>
+    <div style="border:1px solid var(--line);background:var(--s1)">
+      <sc-for list="{{ rtlRules }}" as="r" hint-placeholder-count="7">
+        <div style="display:grid;grid-template-columns:200px 1fr;border-bottom:1px solid var(--line);font-size:13px">
+          <div style="padding:11px 14px;color:var(--accent)">{{ r.k }}</div>
+          <div style="padding:11px 14px;color:var(--muted);line-height:1.6">{{ r.v }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="margin-bottom:56px">
+    <div style="font-family:var(--font-head);font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:14px">10 — Generation states</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+      <sc-for list="{{ states }}" as="s" hint-placeholder-count="9">
+        <div style="border:1px solid {{ s.line }};background:var(--s1);padding:13px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="color:{{ s.color }};font-size:13px">{{ s.glyph }}</span>
+            <span style="font-size:13.5px;font-weight:600;color:{{ s.color }};flex:1">{{ s.en }}</span>
+          </div>
+          <div style="font-size:13px;color:var(--muted);margin-top:3px;font-family:var(--font-fa)">{{ s.fa }}</div>
+          <div style="font-size:11.5px;color:var(--faint);margin-top:8px;line-height:1.55">{{ s.ui }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="margin-bottom:56px">
+    <div style="font-family:var(--font-head);font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:14px">11 — Empty states</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px">
+      <sc-for list="{{ empties }}" as="e" hint-placeholder-count="5">
+        <div style="border:1px dashed var(--line2);background:var(--s1);padding:20px 16px;text-align:center">
+          <div style="font-size:18px;color:var(--faint)">{{ e.glyph }}</div>
+          <div style="font-family:var(--font-head);font-size:16px;letter-spacing:.06em;text-transform:uppercase;margin-top:8px">{{ e.en }}</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px;font-family:var(--font-fa)">{{ e.fa }}</div>
+          <div style="font-size:12px;color:var(--faint);margin-top:8px;line-height:1.55">{{ e.body }}</div>
+          <div style="margin-top:12px;display:inline-block;padding:6px 13px;border:1px solid var(--accent-line);color:var(--accent);font-size:12px">{{ e.cta }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="margin-bottom:56px">
+    <div style="font-family:var(--font-head);font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:14px">12 — Component hierarchy</div>
+    <div style="border:1px solid var(--line);background:var(--s1);padding:18px;font-size:13px;line-height:1.9;color:var(--muted)">
+      <sc-for list="{{ hierarchy }}" as="h" hint-placeholder-count="20">
+        <div style="padding-inline-start:{{ h.indent }};color:{{ h.color }}">{{ h.label }}</div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="margin-bottom:56px">
+    <div style="font-family:var(--font-head);font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:14px">13 — Component inventory</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px">
+      <sc-for list="{{ inventory }}" as="c" hint-placeholder-count="20">
+        <div style="border:1px solid var(--line);background:var(--s1);padding:12px 13px">
+          <div style="font-size:13.5px;font-weight:600">{{ c.name }}</div>
+          <div style="font-size:11.5px;color:var(--faint);margin-top:4px;line-height:1.55">{{ c.note }}</div>
+          <div style="font-size:11px;color:var(--accent);margin-top:7px">{{ c.variants }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="margin-bottom:56px">
+    <div style="font-family:var(--font-head);font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:14px">14 — Responsive behaviour</div>
+    <div style="border:1px solid var(--line);background:var(--s1)">
+      <sc-for list="{{ breakpoints }}" as="b" hint-placeholder-count="4">
+        <div style="display:grid;grid-template-columns:150px 1fr;border-bottom:1px solid var(--line);font-size:13px">
+          <div style="padding:12px 14px;color:var(--accent);font-weight:600">{{ b.range }}</div>
+          <div style="padding:12px 14px;color:var(--muted);line-height:1.65">{{ b.rule }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="margin-bottom:56px">
+    <div style="font-family:var(--font-head);font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:14px">15 — Vue 3 structure</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div style="border:1px solid var(--line);background:var(--s1);padding:18px;font-size:13px;line-height:1.85;color:var(--muted)">
+        <sc-for list="{{ vueTree }}" as="v" hint-placeholder-count="24">
+          <div style="padding-inline-start:{{ v.indent }};color:{{ v.color }}">{{ v.label }}</div>
+        </sc-for>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="border:1px solid var(--line);background:var(--s1);padding:16px">
+          <div style="font-family:var(--font-head);font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Stores (Pinia)</div>
+          <div style="font-size:13px;color:var(--muted);line-height:1.9">useProjectsStore · useGenerationStore · useConnectionStore · useUiStore (lang, theme, view, sidebar)</div>
+        </div>
+        <div style="border:1px solid var(--line);background:var(--s1);padding:16px">
+          <div style="font-family:var(--font-head);font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Realtime</div>
+          <div style="font-size:13px;color:var(--muted);line-height:1.7">A SignalR hub pushes generation state transitions (<span style="color:var(--accent)">connecting → sending → waiting → generating → downloading → completed|failed</span>) so every card, the composer bar and the sidebar dot read one source of truth.</div>
+        </div>
+        <div style="border:1px solid var(--line);background:var(--s1);padding:16px">
+          <div style="font-family:var(--font-head);font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">i18n &amp; direction</div>
+          <div style="font-size:13px;color:var(--muted);line-height:1.7">vue-i18n with <span style="color:var(--accent)">en.json</span> / <span style="color:var(--accent)">fa.json</span>; a <span style="color:var(--accent)">useDirection()</span> composable writes <span style="color:var(--accent)">dir</span> and <span style="color:var(--accent)">data-lang</span> on &lt;html&gt;. Components never read <span style="color:var(--accent)">left/right</span> — only logical properties.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div style="font-family:var(--font-head);font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:14px">16 — UI copy · EN / فارسی</div>
+    <div style="border:1px solid var(--line);background:var(--s1)">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line)">
+        <div style="padding:11px 14px">Key</div><div style="padding:11px 14px">English</div><div style="padding:11px 14px">فارسی</div>
+      </div>
+      <sc-for list="{{ copy }}" as="c" hint-placeholder-count="26">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--line);font-size:13px">
+          <div style="padding:9px 14px;color:var(--accent)">{{ c.k }}</div>
+          <div style="padding:9px 14px">{{ c.en }}</div>
+          <div style="padding:9px 14px;font-family:var(--font-fa);color:var(--muted)" dir="rtl">{{ c.fa }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const A = 'var(--accent)', M = 'var(--muted)', F = 'var(--faint)';
+    const step = (label, last) => ({label, arrow: last ? '' : '→', bg:'transparent', fg:M, bc:'var(--line)'});
+    const hot = (label, last) => ({label, arrow: last ? '' : '→', bg:'var(--accent-dim)', fg:A, bc:'var(--accent-line)'});
+
+    return {
+      routes: [
+        {path:'/', screen:'Projects', note:'Grid or list, search, sort, status chips'},
+        {path:'/p/:id', screen:'Project — tree', note:'Default view; lineage graph + detail panel'},
+        {path:'/p/:id?view=timeline', screen:'Project — timeline', note:'Chronological, indented by depth'},
+        {path:'/p/:id?view=grid', screen:'Project — gallery', note:'Masonry, hover actions, filter + sort'},
+        {path:'/p/:id/g/:gen', screen:'Generation detail', note:'Panel on desktop, full sheet on mobile'},
+        {path:'/connection', screen:'Connection', note:'Modal over any route; deep-linkable'},
+        {path:'/connection/login', screen:'Login session', note:'Dedicated screen — remote browser frame'},
+        {path:'/settings', screen:'Settings', note:'Appearance, session, storage, shortcuts, data'}
+      ],
+      flows: [
+        {name:'First run — connect and generate', steps:[step('Open app'),step('Disconnected banner'),hot('Connect ChatGPT'),step('Login session'),step('Sign in remotely'),hot('Return to app'),step('New project'),hot('Send prompt'),step('Image #1', true)]},
+        {name:'Edit an existing image', steps:[step('Select #12'),hot('Edit'),step('Composer shows “Editing Image #12”'),step('Type change'),hot('⌘ + ↵'),step('New child node #13', true)]},
+        {name:'Branch a new direction', steps:[step('Select #12'),hot('Branch'),step('“Starting branch from Image #12”'),step('Send'),step('Dashed edge, new lane', true)]},
+        {name:'Recover from a dropped session', steps:[step('Generating'),step('Socket lost'),hot('Reconnecting'),step('Resume or fail'),hot('Retry'),step('Completed', true)]}
+      ],
+      mobileWires: [
+        {name:'Drawer', blocks:[{h:'22px',style:'dashed',color:'var(--line2)',fill:'transparent'},{h:'14px',style:'solid',color:'var(--line)',fill:'var(--s3)'},{h:'14px',style:'solid',color:'var(--line)',fill:'var(--s3)'},{h:'14px',style:'solid',color:'var(--line)',fill:'var(--s3)'}]},
+        {name:'Projects', blocks:[{h:'18px',style:'solid',color:'var(--line)',fill:'transparent'},{h:'62px',style:'solid',color:'var(--line)',fill:'var(--s2)'},{h:'62px',style:'solid',color:'var(--line)',fill:'var(--s2)'}]},
+        {name:'Project timeline', blocks:[{h:'70px',style:'solid',color:'var(--line)',fill:'var(--s2)'},{h:'70px',style:'solid',color:'var(--accent-line)',fill:'var(--s2)'},{h:'50px',style:'solid',color:'var(--line)',fill:'var(--s2)'}]},
+        {name:'Generation sheet', blocks:[{h:'110px',style:'solid',color:'var(--line2)',fill:'var(--s3)'},{h:'12px',style:'solid',color:'var(--line)',fill:'transparent'},{h:'28px',style:'solid',color:'var(--line)',fill:'transparent'}]}
+      ],
+      tokenGroups: [
+        {name:'Type scale', rows:[{k:'display',v:'52 / 1.02 · Cond 600'},{k:'h1',v:'26 / 1.15 · Cond 600'},{k:'h2',v:'19 / 1.2 · Cond 600'},{k:'body',v:'14 / 1.6 · 400'},{k:'small',v:'12.5 / 1.55'},{k:'micro',v:'11 / 1.4 · .12em'}]},
+        {name:'Spacing (4px base)', rows:[{k:'xs',v:'4px'},{k:'sm',v:'8px'},{k:'md',v:'14px'},{k:'lg',v:'20px'},{k:'xl',v:'28px'},{k:'2xl',v:'44px'}]},
+        {name:'Radius', rows:[{k:'none',v:'0 — cards, frames'},{k:'sm',v:'2px — chips'},{k:'pill',v:'999px — status dots'},{k:'note',v:'squared geometry, corners earned not default'}]},
+        {name:'Shadows', rows:[{k:'card',v:'0 2 10 rgba(0,0,0,.25)'},{k:'raised',v:'0 12 40 rgba(0,0,0,.35)'},{k:'modal',v:'0 30 80 rgba(0,0,0,.50)'},{k:'focus ring',v:'0 0 0 3px accent-dim'}]},
+        {name:'Surfaces', rows:[{k:'level 0',v:'--bg · app ground'},{k:'level 1',v:'--s1 · cards, sidebar'},{k:'level 2',v:'--s2 · inset rows'},{k:'level 3',v:'--s3 · skeleton, wells'},{k:'glass',v:'72% + blur 14 · sticky headers only'}]},
+        {name:'Icons &amp; targets', rows:[{k:'icon sm',v:'14px'},{k:'icon md',v:'16px · default'},{k:'icon lg',v:'20px'},{k:'stroke',v:'1.5 (Lucide)'},{k:'touch target',v:'≥ 44 × 44'}]},
+        {name:'Motion', rows:[{k:'hover',v:'140ms ease-out'},{k:'panel',v:'200–220ms cubic(.2,.7,.3,1)'},{k:'enter',v:'260ms rise 8px'},{k:'progress',v:'400ms width'},{k:'reduced',v:'all → 0ms on prefers-reduced-motion'}]},
+        {name:'States', rows:[{k:'hover',v:'surface +1 step'},{k:'active',v:'accent-dim + accent border'},{k:'focus',v:'2px accent outline, 2px offset'},{k:'disabled',v:'opacity .5, no pointer'},{k:'busy',v:'spinner + label + %'}]}
+      ],
+      darkColors: [
+        {name:'bg', hex:'#0b0d0f'},{name:'surface 1', hex:'#111417'},{name:'surface 2', hex:'#171b1f'},{name:'surface 3', hex:'#1e2328'},
+        {name:'line', hex:'#242a30'},{name:'line strong', hex:'#323a42'},{name:'text', hex:'#e9edf0'},{name:'muted', hex:'#8d979f'},
+        {name:'accent (steel)', hex:'#7aa5cf'},{name:'success', hex:'#63b892'},{name:'warning', hex:'#d7a15c'},{name:'danger', hex:'#d47878'}
+      ],
+      lightColors: [
+        {name:'bg', hex:'#f1f2f4'},{name:'surface 1', hex:'#ffffff'},{name:'surface 2', hex:'#f7f8f9'},{name:'surface 3', hex:'#eceef1'},
+        {name:'line', hex:'#dfe2e6'},{name:'line strong', hex:'#c7ccd2'},{name:'text', hex:'#191c1f'},{name:'muted', hex:'#5f6a73'},
+        {name:'accent (steel)', hex:'#43688e'},{name:'success', hex:'#2f7d5c'},{name:'warning', hex:'#a56d22'},{name:'danger', hex:'#a84646'}
+      ],
+      rtlRules: [
+        {k:'Direction source', v:'dir + data-lang on <html>. Nothing reads a hard-coded left or right.'},
+        {k:'Layout', v:'The whole shell mirrors: sidebar moves to the right, detail panel to the left, composer alignment follows.'},
+        {k:'Spacing', v:'margin-inline / padding-inline / inset-inline-start everywhere; physical properties are banned in review.'},
+        {k:'Icons', v:'Directional glyphs flip (back arrow ← becomes →, chevrons invert). Neutral icons (star, gear, download) never flip.'},
+        {k:'Branch graph', v:'The SVG edge layer is scaleX(-1) in RTL; nodes are positioned with inset-inline-start so they mirror natively.'},
+        {k:'Numbers & IDs', v:'Generation IDs, timestamps and percentages stay LTR inside an isolated span (unicode-bidi: isolate).'},
+        {k:'Type', v:'Vazirmatn replaces the Barlow pair; line-height rises to 1.9 and text-transform: uppercase is disabled.'}
+      ],
+      states: [
+        {en:'Idle', fa:'آماده', glyph:'○', color:M, line:'var(--line)', ui:'Composer enabled, no banner.'},
+        {en:'Connecting', fa:'در حال اتصال', glyph:'◌', color:'var(--warn)', line:'rgba(215,161,92,.3)', ui:'Spinner in composer bar, send locked.'},
+        {en:'Sending prompt', fa:'ارسال پرامپت', glyph:'↑', color:'var(--warn)', line:'rgba(215,161,92,.3)', ui:'Progress 22%, cancel available.'},
+        {en:'Waiting', fa:'در انتظار پاسخ', glyph:'◔', color:'var(--warn)', line:'rgba(215,161,92,.3)', ui:'Placeholder node appears in the tree.'},
+        {en:'Generating', fa:'در حال تولید', glyph:'◐', color:'var(--warn)', line:'rgba(215,161,92,.3)', ui:'Shimmer skeleton in the node frame.'},
+        {en:'Downloading', fa:'در حال دریافت', glyph:'↓', color:A, line:'var(--accent-line)', ui:'Progress 94%, cancel greyed.'},
+        {en:'Completed', fa:'تکمیل شد', glyph:'✓', color:'var(--ok)', line:'rgba(99,184,146,.3)', ui:'Node pops in, toast, auto-select.'},
+        {en:'Failed', fa:'ناموفق', glyph:'!', color:'var(--bad)', line:'rgba(212,120,120,.3)', ui:'Reason + Retry + Copy prompt on the card.'},
+        {en:'Reconnecting', fa:'اتصال مجدد', glyph:'⟳', color:'var(--warn)', line:'rgba(215,161,92,.3)', ui:'Sticky bar, queued prompt preserved.'}
+      ],
+      empties: [
+        {glyph:'▢', en:'No projects yet', fa:'هنوز پروژه‌ای نیست', body:'A project keeps one visual thread and its whole branch history.', cta:'New project'},
+        {glyph:'◫', en:'Empty project', fa:'پروژه خالی است', body:'Write your first prompt in the composer below.', cta:'Write a prompt'},
+        {glyph:'✕', en:'ChatGPT disconnected', fa:'اتصال ChatGPT قطع است', body:'Projects stay readable; generation is paused until the session is live.', cta:'Connect'},
+        {glyph:'!', en:'Generation failed', fa:'تولید ناموفق بود', body:'The prompt is kept. Retry, or edit it before sending again.', cta:'Retry'},
+        {glyph:'⌕', en:'No matching projects', fa:'پروژه‌ای پیدا نشد', body:'Try a different name, or clear the search.', cta:'Clear search'}
+      ],
+      hierarchy: [
+        {label:'AppShell', indent:'0px', color:'var(--text)'},
+        {label:'├ AppSidebar', indent:'12px', color:A},
+        {label:'│  ├ BrandMark · NewProjectButton', indent:'28px', color:M},
+        {label:'│  ├ NavList → NavItem', indent:'28px', color:M},
+        {label:'│  ├ RecentList → RecentItem', indent:'28px', color:M},
+        {label:'│  └ ConnectionStatus · LanguageSwitch · ThemeToggle · UserChip', indent:'28px', color:M},
+        {label:'├ AppMain', indent:'12px', color:A},
+        {label:'│  ├ ProjectsScreen', indent:'28px', color:'var(--text)'},
+        {label:'│  │  ├ ProjectsToolbar (SearchInput · SortSelect · ViewToggle)', indent:'44px', color:M},
+        {label:'│  │  ├ ProjectGrid → ProjectCard → StatusIndicator · ContextMenu', indent:'44px', color:M},
+        {label:'│  │  └ EmptyState · SkeletonGrid', indent:'44px', color:M},
+        {label:'│  ├ ProjectScreen', indent:'28px', color:'var(--text)'},
+        {label:'│  │  ├ ProjectHeader (title · fav · connection · ViewToggle · MoreMenu)', indent:'44px', color:M},
+        {label:'│  │  ├ GenerationTree → TreeEdges + GenerationNode', indent:'44px', color:M},
+        {label:'│  │  ├ GenerationTimeline → GenerationCard', indent:'44px', color:M},
+        {label:'│  │  ├ GenerationGallery → ImageCard', indent:'44px', color:M},
+        {label:'│  │  ├ GenerationDetailPanel', indent:'44px', color:M},
+        {label:'│  │  └ PromptComposer (ContextChip · Textarea · ModeSegment · RunBar)', indent:'44px', color:A},
+        {label:'│  ├ LoginSessionScreen (VncFrame · StepList)', indent:'28px', color:'var(--text)'},
+        {label:'│  └ SettingsScreen (SettingSection → SettingRow)', indent:'28px', color:'var(--text)'},
+        {label:'└ Overlays: ConnectionModal · ConfirmDialog · Drawer · ToastStack · Tooltip', indent:'12px', color:A}
+      ],
+      inventory: [
+        {name:'Button', note:'Solid accent primary, outlined secondary, ghost tertiary.', variants:'4 sizes · loading · disabled'},
+        {name:'IconButton', note:'28px chrome, 44px touch target on mobile.', variants:'ghost · outlined · danger'},
+        {name:'Input', note:'Hairline frame, inline leading icon, ⌘K hint slot.', variants:'default · error · with-affix'},
+        {name:'Textarea', note:'Auto-grow to 6 rows inside the composer.', variants:'default · busy'},
+        {name:'Select', note:'Native under the hood, themed trigger.', variants:'inline · block'},
+        {name:'Modal', note:'Backdrop blur 3px, 520px, focus trapped.', variants:'default · destructive'},
+        {name:'Drawer', note:'Mobile navigation; 232px, swipe to close.', variants:'start · bottom sheet'},
+        {name:'Tooltip', note:'Delay 400ms, never the only label.', variants:'4 placements (logical)'},
+        {name:'Dropdown', note:'Project and generation context menus.', variants:'anchored · full-width mobile'},
+        {name:'Toast', note:'Bottom-center, 1.8s, one at a time.', variants:'info · success · error'},
+        {name:'Badge / Tag', note:'Status, mode and kind labels.', variants:'accent · neutral · outline'},
+        {name:'Tabs / Segment', note:'View switch and composer mode.', variants:'2–4 options'},
+        {name:'ImageCard', note:'Gallery tile with hover action row.', variants:'masonry · fixed'},
+        {name:'ProjectCard', note:'Thumbnail, counts, activity, status, menu.', variants:'grid · list row'},
+        {name:'PromptComposer', note:'Sticky; context chip, mode, run bar, cancel.', variants:'desktop · mobile docked'},
+        {name:'GenerationNode', note:'Tree node: image, prompt, quick actions.', variants:'idle · busy · failed · selected'},
+        {name:'StatusIndicator', note:'Dot + glyph + label; never color alone.', variants:'9 states'},
+        {name:'EmptyState', note:'Dashed frame, glyph, one CTA.', variants:'5 cases'},
+        {name:'Skeleton', note:'Shimmer 1.2s; matches final geometry.', variants:'card · row · tile'},
+        {name:'ConfirmDialog', note:'Destructive actions only; typed confirm for delete-all.', variants:'default · danger'}
+      ],
+      breakpoints: [
+        {range:'≥ 1280px', rule:'Full shell: sidebar 236px, tree canvas, detail panel 302px, composer centred at 900px max.'},
+        {range:'1024 – 1279px', rule:'Detail panel becomes an overlay sheet above the canvas; sidebar auto-collapses to 68px icons.'},
+        {range:'768 – 1023px', rule:'Sidebar becomes a drawer. Tree keeps 2D but scrolls horizontally with a mini-map hint.'},
+        {range:'< 768px', rule:'Tree → indented timeline, gallery → 2 columns, composer docks to the bottom edge, actions reach 44px, detail opens as a full sheet.'}
+      ],
+      vueTree: [
+        {label:'src/', indent:'0px', color:'var(--text)'},
+        {label:'├ App.vue', indent:'10px', color:M},
+        {label:'├ layouts/AppShell.vue', indent:'10px', color:M},
+        {label:'├ components/', indent:'10px', color:A},
+        {label:'│  ├ AppSidebar.vue', indent:'26px', color:M},
+        {label:'│  ├ LanguageSwitch.vue · ThemeToggle.vue', indent:'26px', color:M},
+        {label:'│  ├ ProjectCard.vue · ProjectGrid.vue', indent:'26px', color:M},
+        {label:'│  ├ ProjectHeader.vue · ViewToggle.vue', indent:'26px', color:M},
+        {label:'│  ├ GenerationTree.vue · GenerationEdges.vue', indent:'26px', color:M},
+        {label:'│  ├ GenerationNode.vue · GenerationCard.vue', indent:'26px', color:M},
+        {label:'│  ├ GenerationGallery.vue · ImageCard.vue', indent:'26px', color:M},
+        {label:'│  ├ GenerationDetailPanel.vue', indent:'26px', color:M},
+        {label:'│  ├ PromptComposer.vue · ComposerContextChip.vue', indent:'26px', color:M},
+        {label:'│  ├ ConnectionModal.vue · ConnectionStatus.vue', indent:'26px', color:M},
+        {label:'│  ├ LoginSessionFrame.vue', indent:'26px', color:M},
+        {label:'│  ├ SettingsDrawer.vue · SettingRow.vue', indent:'26px', color:M},
+        {label:'│  └ ui/ (BaseButton, BaseInput, BaseModal, BaseDrawer,', indent:'26px', color:M},
+        {label:'      BaseToast, BaseBadge, BaseTabs, SkeletonBlock,', indent:'26px', color:M},
+        {label:'      EmptyState, StatusIndicator, ConfirmDialog)', indent:'26px', color:M},
+        {label:'├ composables/ (useDirection, useGenerationSocket, useShortcuts)', indent:'10px', color:M},
+        {label:'├ stores/ (projects, generation, connection, ui)', indent:'10px', color:M},
+        {label:'├ locales/ (en.json, fa.json)', indent:'10px', color:M},
+        {label:'└ styles/tokens.css', indent:'10px', color:M}
+      ],
+      copy: [
+        {k:'nav.projects', en:'Projects', fa:'پروژه‌ها'},
+        {k:'nav.recent', en:'Recent', fa:'اخیر'},
+        {k:'nav.favorites', en:'Favorites', fa:'علاقه‌مندی‌ها'},
+        {k:'nav.gallery', en:'Gallery', fa:'گالری'},
+        {k:'nav.settings', en:'Settings', fa:'تنظیمات'},
+        {k:'action.newProject', en:'New project', fa:'پروژه جدید'},
+        {k:'action.edit', en:'Edit', fa:'ویرایش'},
+        {k:'action.branch', en:'Branch', fa:'شاخه'},
+        {k:'action.download', en:'Download', fa:'دانلود'},
+        {k:'action.copyPrompt', en:'Copy prompt', fa:'کپی پرامپت'},
+        {k:'action.rename', en:'Rename', fa:'تغییر نام'},
+        {k:'action.send', en:'Send', fa:'ارسال'},
+        {k:'action.cancel', en:'Cancel', fa:'لغو'},
+        {k:'composer.placeholder', en:'Describe the image you want…', fa:'تصویری که می‌خواهید را توصیف کنید…'},
+        {k:'composer.editing', en:'Editing Image #12', fa:'در حال ویرایش تصویر #۱۲'},
+        {k:'composer.branching', en:'Starting branch from Image #12', fa:'شروع شاخه از تصویر #۱۲'},
+        {k:'composer.shortcut', en:'⌘ + ↵ to send', fa:'⌘ + ↵ برای ارسال'},
+        {k:'conn.connected', en:'Connected', fa:'متصل'},
+        {k:'conn.disconnected', en:'Disconnected', fa:'قطع'},
+        {k:'conn.reconnecting', en:'Reconnecting', fa:'اتصال مجدد'},
+        {k:'conn.connect', en:'Connect ChatGPT', fa:'اتصال به ChatGPT'},
+        {k:'conn.openLogin', en:'Open login session', fa:'باز کردن نشست ورود'},
+        {k:'conn.reset', en:'Reset session', fa:'بازنشانی نشست'},
+        {k:'conn.last', en:'Last connected', fa:'آخرین اتصال'},
+        {k:'login.step1', en:'Log in to ChatGPT in the frame.', fa:'در قاب روبه‌رو وارد ChatGPT شوید.'},
+        {k:'login.step2', en:'Complete verification if it is requested.', fa:'در صورت درخواست، تأیید هویت را کامل کنید.'},
+        {k:'login.step3', en:'Return to the app — the session is picked up automatically.', fa:'به اپ برگردید — نشست به‌صورت خودکار برداشته می‌شود.'},
+        {k:'empty.noProjects', en:'No projects yet', fa:'هنوز پروژه‌ای نیست'},
+        {k:'empty.noResults', en:'No matching projects', fa:'پروژه‌ای پیدا نشد'},
+        {k:'settings.language', en:'Language', fa:'زبان'},
+        {k:'settings.theme', en:'Theme', fa:'تم'},
+        {k:'settings.defaultView', en:'Default project view', fa:'نمای پیش‌فرض پروژه'},
+        {k:'settings.storage', en:'Storage', fa:'فضای ذخیره'},
+        {k:'settings.shortcuts', en:'Keyboard shortcuts', fa:'میان‌برهای صفحه‌کلید'},
+        {k:'settings.deleteAll', en:'Delete all data', fa:'حذف همه داده‌ها'}
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

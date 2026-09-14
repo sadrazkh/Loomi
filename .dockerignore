@@ -1,0 +1,9 @@
+.git
+**/bin
+**/obj
+**/node_modules
+**/Storage
+**/wwwroot/dist
+design-reference
+test-results
+.env

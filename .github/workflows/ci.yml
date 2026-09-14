@@ -1,0 +1,24 @@
+name: Verify Loomi
+on: [push, pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/Loomi/Client/package-lock.json
+      - run: npm ci --prefix src/Loomi/Client
+      - run: npm run build --prefix src/Loomi/Client
+      - run: dotnet restore --configfile NuGet.Config
+      - run: dotnet build --no-restore
+      - run: pwsh src/Loomi/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium
+      - run: dotnet test --no-build
+      - run: dotnet tool restore --configfile NuGet.Config
+      - run: dotnet ef migrations has-pending-model-changes --project src/Loomi --no-build
+      - run: docker build -t loomi:ci .
