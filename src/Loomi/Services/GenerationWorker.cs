@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Loomi.Services;
 public class GenerationWorker(IServiceScopeFactory scopes, BrowserAutomationService browser, IImageStorage storage, IHubContext<StatusHub> hub, ILogger<GenerationWorker> logger) : BackgroundService
 {
-    private static readonly string[] Reportable = ["LoginRequired", "VerificationRequired", "GenerationTimeout", "InvalidImage", "ConversationNotSaved"];
+    private static readonly string[] Reportable = ["LoginRequired", "VerificationRequired", "GenerationTimeout", "InvalidImage", "ConversationNotSaved", "NoAccount"];
     public static string ErrorCodeFor(Exception ex) => ErrorCodeFor(ex.GetType().Name, ex.Message);
     /// <summary>Maps a failure to a safe code. Only recognised messages are shown; anything else could carry page text.</summary>
     public static string ErrorCodeFor(string exceptionType, string message) =>
