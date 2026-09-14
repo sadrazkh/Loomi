@@ -33,7 +33,7 @@ public class IntegrationTests
     {
         var session = await client.GetFromJsonAsync<JsonElement>("/api/session");
         client.DefaultRequestHeaders.Add("X-CSRF-TOKEN", session.GetProperty("csrfToken").GetString());
-        var login = await client.PostAsJsonAsync("/api/session/login", new { accessKey = AppFactory.Key });
+        var login = await client.PostAsJsonAsync("/api/session/login", new { username = "owner", password = AppFactory.Key });
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         session = await client.GetFromJsonAsync<JsonElement>("/api/session");
         client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
@@ -45,7 +45,7 @@ public class IntegrationTests
         using var factory = new AppFactory(); using var client = factory.CreateClient();
         foreach (var path in new[] { "/api/projects", "/api/auth/status", "/desktop/vnc.html", $"/api/generations/{Guid.NewGuid()}/image" })
             Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync(path)).StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/session/login", new { accessKey = AppFactory.Key })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/session/login", new { username = "owner", password = AppFactory.Key })).StatusCode);
         await Authenticate(client);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/projects")).StatusCode);
         client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
