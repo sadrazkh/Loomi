@@ -139,7 +139,7 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             await report(RunStatus.WaitingForResponse);
             var deadline = DateTime.UtcNow.AddSeconds(settings.GenerationTimeoutSeconds);
             string? previous = null;
-            DateTime? stableSince = null;
+            DateTime? stableSince = null, emptySince = null;
             bool announced = false;
             while (DateTime.UtcNow < deadline)
             {
@@ -153,7 +153,16 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
                 if (await replies.CountAsync() <= before) continue;
                 var latest = replies.Last;
                 var image = latest.Locator(settings.Selectors.GeneratedImage).Last;
-                if (await image.CountAsync() == 0 || !await image.IsVisibleAsync()) continue;
+                if (await image.CountAsync() == 0 || !await image.IsVisibleAsync())
+                {
+                    // A reply that has finished and carries no image is an answer, not a delay: an account limit,
+                    // a refusal, or plain text. Waiting out the timeout tells the caller nothing it can act on.
+                    if (await page.Locator(settings.Selectors.Stop).First.IsVisibleAsync()) { emptySince = null; continue; }
+                    emptySince ??= DateTime.UtcNow;
+                    if ((DateTime.UtcNow - emptySince.Value).TotalSeconds < settings.StableSeconds) continue;
+                    throw new InvalidOperationException("NoImageReturned");
+                }
+                emptySince = null;
                 if (!announced) { await report(RunStatus.GeneratingImage); announced = true; }
                 var source = await image.EvaluateAsync<string>("el => el.complete && el.naturalWidth >= 256 && el.naturalHeight >= 256 ? el.currentSrc : ''");
                 if (string.IsNullOrEmpty(source) || await page.Locator(settings.Selectors.Stop).First.IsVisibleAsync()) { stableSince = null; continue; }
