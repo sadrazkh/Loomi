@@ -14,6 +14,8 @@ public class ErrorCodeTests
     [InlineData("GenerationTimeout")]
     [InlineData("InvalidImage")]
     [InlineData("ConversationNotSaved")]
+    [InlineData("NoImageReturned")]
+    [InlineData("QuotaExceeded")]
     public void Known_operation_failures_keep_their_own_code(string code)
         => Assert.Equal(code, GenerationWorker.ErrorCodeFor(new InvalidOperationException(code)));
 
