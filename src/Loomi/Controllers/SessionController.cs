@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Loomi.DTOs;
+using Loomi.Security;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -10,9 +11,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 namespace Loomi.Controllers;
 [ApiController, Route("api/session")]
-public class SessionController(IConfiguration config, IAntiforgery antiforgery) : ControllerBase
+public class SessionController(IConfiguration config, IAntiforgery antiforgery, IWebHostEnvironment environment) : ControllerBase
 {
-    [HttpGet] public IActionResult Get() => Ok(new { authenticated = User.Identity?.IsAuthenticated == true, csrfToken = antiforgery.GetAndStoreTokens(HttpContext).RequestToken });
+    [HttpGet] public IActionResult Get() => Ok(new { authenticated = User.Identity?.IsAuthenticated == true, csrfToken = antiforgery.GetAndStoreTokens(HttpContext).RequestToken, devAccessKey = DevelopmentAccess.Hint(environment, config["Security:AccessKey"]) });
     [HttpPost("login"), EnableRateLimiting("login")]
     public async Task<IActionResult> Login(LoginRequest request)
     {

@@ -1,9 +1,11 @@
+using System.Net;
+using System.Net.Sockets;
 using Loomi.Models;
 using Microsoft.Extensions.Options;
 using Microsoft.Playwright;
 namespace Loomi.BrowserAutomation;
 
-public record ConnectionStatus(string State, bool Busy, string DesktopUrl = "/desktop/vnc.html?autoconnect=true&resize=scale&path=desktop/websockify");
+public record ConnectionStatus(string State, bool Busy, string? DesktopUrl);
 public record BrowserResult(byte[] Image, string ConversationUrl);
 public sealed class BrowserAutomationService(IOptions<BrowserOptions> options, IConfiguration config, IChromiumLauncher launcher) : IAsyncDisposable
 {
@@ -15,15 +17,27 @@ public sealed class BrowserAutomationService(IOptions<BrowserOptions> options, I
     private string Profile => Path.GetFullPath(Path.Combine(config["Storage:Root"] ?? "Storage", "profiles", "default"));
     public async Task<ConnectionStatus> StatusAsync()
     {
-        if (!await gate.WaitAsync(0)) return new(state, true);
-        try { await DetectAsync(); return new(state, false); }
+        if (!await gate.WaitAsync(0)) return new(state, true, await DesktopUrlAsync());
+        try { await DetectAsync(); return new(state, false, await DesktopUrlAsync()); }
         finally { gate.Release(); }
     }
     public async Task<ConnectionStatus> ConnectAsync(CancellationToken ct)
     {
         if (!await gate.WaitAsync(0, ct)) throw new InvalidOperationException("BrowserBusy");
-        try { await EnsureAsync(); await DetectAsync(); return new(state, false); }
+        try { await EnsureAsync(); await DetectAsync(); return new(state, false, await DesktopUrlAsync()); }
         finally { gate.Release(); }
+    }
+    /// <summary>Null when no noVNC service answers, so the UI can point at the desktop window instead of a dead proxy route.</summary>
+    private async Task<string?> DesktopUrlAsync()
+    {
+        try
+        {
+            using var probe = new TcpClient();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(400));
+            await probe.ConnectAsync(IPAddress.Loopback, settings.DesktopPort, timeout.Token);
+            return "/desktop/vnc.html?autoconnect=true&resize=scale&path=desktop/websockify";
+        }
+        catch (Exception e) when (e is SocketException or OperationCanceledException) { return null; }
     }
     public async Task NewProjectAsync(CancellationToken ct)
     {
@@ -52,6 +66,14 @@ public sealed class BrowserAutomationService(IOptions<BrowserOptions> options, I
         context.SetDefaultNavigationTimeout(settings.NavigationTimeoutMs);
         page = context.Pages.FirstOrDefault() ?? await context.NewPageAsync();
         await NavigateAsync("https://chatgpt.com/");
+        await SettleAsync();
+    }
+    /// <summary>The site renders after DOMContentLoaded, so deciding immediately reports a login prompt that is not there.</summary>
+    private async Task SettleAsync()
+    {
+        var signals = $"{settings.Selectors.Challenge}, {settings.Selectors.LoggedOut}, {settings.Selectors.LoggedIn}";
+        try { await page!.Locator(signals).First.WaitForAsync(new() { Timeout = settings.SettleTimeoutMs }); }
+        catch (TimeoutException) { }
     }
     private async Task NavigateAsync(string url)
     {
@@ -68,7 +90,8 @@ public sealed class BrowserAutomationService(IOptions<BrowserOptions> options, I
         try
         {
             if (page == null || page.IsClosed) { state = "Disconnected"; return; }
-            if (await page.Locator(settings.Selectors.LoggedOut).First.IsVisibleAsync()) state = "LoginRequired";
+            if (await page.Locator(settings.Selectors.Challenge).First.IsVisibleAsync()) state = "VerificationRequired";
+            else if (await page.Locator(settings.Selectors.LoggedOut).First.IsVisibleAsync()) state = "LoginRequired";
             else if (await page.Locator(settings.Selectors.LoggedIn).First.IsVisibleAsync() && await page.Locator(settings.Selectors.Composer).First.IsVisibleAsync()) state = "Connected";
             else state = "LoginRequired";
         }
@@ -85,7 +108,7 @@ public sealed class BrowserAutomationService(IOptions<BrowserOptions> options, I
             await NavigateAsync(generation.Operation == Operation.Edit && conversation != null ? conversation : "https://chatgpt.com/");
             await page!.Locator(settings.Selectors.Composer).First.WaitForAsync();
             await DetectAsync();
-            if (state != "Connected") throw new InvalidOperationException("LoginRequired");
+            if (state != "Connected") throw new InvalidOperationException(state == "VerificationRequired" ? "VerificationRequired" : "LoginRequired");
             ct.ThrowIfCancellationRequested();
             if (parentImage != null)
             {

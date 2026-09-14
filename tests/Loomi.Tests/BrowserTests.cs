@@ -10,6 +10,8 @@ public class FixtureLauncher : IChromiumLauncher, IAsyncDisposable
     private IPlaywright? playwright;
     public IBrowserContext Context { get; private set; } = null!;
     public List<string> Visits { get; } = [];
+    /// <summary>Replaces the ChatGPT stand-in, so tests can serve an interstitial instead.</summary>
+    public string? Body { get; init; }
     public async Task<IBrowserContext> LaunchAsync(string profile, BrowserOptions options)
     {
         playwright = await Playwright.CreateAsync();
@@ -18,7 +20,7 @@ public class FixtureLauncher : IChromiumLauncher, IAsyncDisposable
         await Context.RouteAsync("**/*", async route =>
         {
             Visits.Add(route.Request.Url);
-            await route.FulfillAsync(new() { ContentType = "text/html", Body = """
+            await route.FulfillAsync(new() { ContentType = "text/html", Body = Body ?? """
                 <html><body>
                 <button data-testid="accounts-profile-button">Account</button>
                 <textarea id="prompt-textarea"></textarea><input type="file" onchange="document.querySelector('#ready').hidden=false">

@@ -7,6 +7,14 @@ using Microsoft.EntityFrameworkCore;
 namespace Loomi.Services;
 public class GenerationWorker(IServiceScopeFactory scopes, BrowserAutomationService browser, IImageStorage storage, IHubContext<StatusHub> hub, ILogger<GenerationWorker> logger) : BackgroundService
 {
+    private static readonly string[] Reportable = ["LoginRequired", "VerificationRequired", "GenerationTimeout", "InvalidImage", "ConversationNotSaved"];
+    public static string ErrorCodeFor(Exception ex) => ErrorCodeFor(ex.GetType().Name, ex.Message);
+    /// <summary>Maps a failure to a safe code. Only recognised messages are shown; anything else could carry page text.</summary>
+    public static string ErrorCodeFor(string exceptionType, string message) =>
+        exceptionType == "TargetClosedException" ? "BrowserClosed"   // Playwright keeps the type internal, so match by name.
+        : Reportable.Contains(message) ? message
+        : "AutomationFailed";
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using (var scope = scopes.CreateScope())
@@ -45,8 +53,7 @@ public class GenerationWorker(IServiceScopeFactory scopes, BrowserAutomationServ
                 {
                     // Do not log browser exception text: it can contain URLs, page content or tokens.
                     logger.LogWarning("Generation {GenerationId} failed ({Type})", g.Id, ex.GetType().Name);
-                    var allowed = new[] { "LoginRequired", "GenerationTimeout", "InvalidImage", "ConversationNotSaved" };
-                    g.ErrorMessage = allowed.Contains(ex.Message) ? ex.Message : "AutomationFailed";
+                    g.ErrorMessage = ErrorCodeFor(ex);
                     await Report(RunStatus.Failed);
                 }
                 g.Project.Status = await db.Generations.AnyAsync(x => x.ProjectId == g.ProjectId && x.Status == RunStatus.Queued, stoppingToken) ? "Queued" : "Ready";

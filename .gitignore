@@ -7,3 +7,5 @@ src/Loomi/wwwroot/dist/
 test-results/
 artifacts/
 *.user
+.vs/
+.claude/

@@ -1,9 +1,9 @@
 param([int]$Port = 5080)
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
-if (-not $env:Security__AccessKey) {
-    $credential = Get-Credential -UserName 'Loomi' -Message 'Enter your workspace access key (at least 32 characters). This is not your ChatGPT password.'
-    $env:Security__AccessKey = $credential.GetNetworkCredential().Password
-}
+dotnet build --nologo
+# Chromium ships per Playwright version; installing is a fast no-op once the matching build is present.
+& './src/Loomi/bin/Debug/net10.0/playwright.ps1' install chromium
 $env:ASPNETCORE_ENVIRONMENT = 'Development'
-dotnet run --project src/Loomi --no-launch-profile --urls "http://localhost:$Port"
+# Development falls back to the built-in access key and logs it. Set Security__AccessKey first to use your own.
+dotnet run --project src/Loomi --no-build --no-launch-profile --urls "http://localhost:$Port"

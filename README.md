@@ -41,16 +41,26 @@ design-reference/        Original supplied design reference, not executable app 
 dotnet restore --configfile NuGet.Config
 npm ci --prefix src/Loomi/Client
 npm run build --prefix src/Loomi/Client
-dotnet build
-pwsh -File src/Loomi/bin/Debug/net10.0/playwright.ps1 install chromium
 pwsh -File scripts/dev.ps1
 ```
 
-اسکریپت کلید دسترسی فضای کار را می‌پرسد؛ یک مقدار تصادفی حداقل ۳۲ نویسه‌ای وارد کنید. می‌توانید قبلاً `Security__AccessKey` را در محیط تنظیم کنید. برنامه در [localhost:5080](http://localhost:5080) در دسترس است. با همان کلید وارد شوید. Migration هنگام راه‌اندازی اعمال می‌شود.
+اسکریپت خودش build می‌کند و Chromium مطابق نسخه Playwright را نصب می‌کند؛ اگر از قبل نصب باشد این مرحله سریع رد می‌شود. برنامه در [localhost:5080](http://localhost:5080) در دسترس است و Migration هنگام راه‌اندازی اعمال می‌شود. کلید ورود لازم نیست: محیط Development کلید داخلی زیر را برمی‌دارد و در لاگ چاپ می‌کند. اگر کلید خودتان را می‌خواهید، پیش از اجرا `Security__AccessKey` را تنظیم کنید.
 
-در اجرای مستقیم Windows، **Connect ChatGPT** یک پنجره Chromium محلی باز می‌کند؛ داخل همان پنجره وارد شوید. noVNC به‌صورت خودکار فقط در Docker آماده می‌شود. آدرس «مرورگر امن» در اجرای مستقیم، بدون سرویس noVNC، کار نمی‌کند. برای آزمایش کامل مسیر مرورگر راه‌دور از Docker/Linux استفاده کنید.
+### کلید پیش‌فرض حالت توسعه
 
-برای اجرای مستقیم Linux با دسکتاپ و متغیر `DISPLAY`، وابستگی‌های Chromium را نصب و `bash scripts/dev.sh` را اجرا کنید. روی Linux بدون دسکتاپ، روش Docker زیر توصیه می‌شود.
+برای اینکه اجرای ساده (`dotnet run`، F5 در Visual Studio) بدون هیچ تنظیمی کار کند، محیط Development یک کلید داخلی دارد:
+
+```text
+loomi-development-access-key-change-me
+```
+
+این کلید در `appsettings.Development.json` است و اگر آن مقدار هم نباشد، خود برنامه در Development همین را جایگزین می‌کند و در استارتاپ یک هشدار لاگ می‌کند. در همین حالت، فرم ورود کلید را از پیش پر می‌کند و کنار آن نشان می‌دهد، پس فقط کافی است **Unlock** را بزنید.
+
+محافظ‌ها: خارج از Development استفاده از این کلید **رد می‌شود** و برنامه با خطای صریح بالا نمی‌آید؛ اگر کلید تنظیم‌شده چیزی جز همین کلید داخلی باشد، `GET /api/session` آن را فاش نمی‌کند. Docker با `ASPNETCORE_ENVIRONMENT=Production` اجرا می‌شود و همچنان `LOOMI_ACCESS_KEY` واقعی می‌خواهد. برای هر اجرای غیرمحلی `Security__AccessKey` خودتان را تنظیم کنید.
+
+در اجرای مستقیم Windows، **Connect ChatGPT** یک پنجره Chromium محلی باز می‌کند؛ داخل همان پنجره وارد شوید. noVNC به‌صورت خودکار فقط در Docker آماده می‌شود. برنامه بررسی می‌کند که چیزی روی پورت noVNC پاسخ می‌دهد یا نه؛ اگر ندهد `desktopUrl` برابر `null` برمی‌گردد و به‌جای دکمه‌ی «مرورگر امن» پیامی نمایش داده می‌شود که مرورگر روی همین دسکتاپ باز است. (پیش از این، آن دکمه ۵۰۲ می‌داد.) برای آزمایش کامل مسیر مرورگر راه‌دور از Docker/Linux استفاده کنید.
+
+برای اجرای مستقیم Linux با دسکتاپ و متغیر `DISPLAY`، وابستگی‌های سیستمی Chromium را نصب و `bash scripts/dev.sh` را اجرا کنید؛ این اسکریپت هم اگر `pwsh` موجود باشد خود مرورگر را نصب می‌کند. روی Linux بدون دسکتاپ، روش Docker زیر توصیه می‌شود.
 
 ## استقرار Linux / Docker
 
@@ -104,12 +114,16 @@ Volumeها:
 
 | متغیر | پیش‌فرض / توضیح |
 |---|---|
-| `Security__AccessKey` | اجباری، کلید تصادفی حداقل ۳۲ نویسه |
+| `Security__AccessKey` | اجباری، کلید تصادفی حداقل ۳۲ نویسه؛ فقط در Development پیش‌فرض دارد |
 | `Security__KnownProxies__0` | IP صریح reverse proxy مورد اعتماد |
 | `AllowedHosts` | `localhost;127.0.0.1`؛ در سرور دامنه را اضافه کنید |
 | `Storage__Root` | `Storage` در اجرای محلی، `/data` در Docker |
 | `Browser__Headless` | `false`؛ برای ورود دستی باید false بماند |
-| `Browser__ExecutablePath` | اختیاری، مسیر Chromium دلخواه؛ معمولاً خالی بماند |
+| `Browser__ExecutablePath` | اختیاری، مسیر Chromium دلخواه؛ معمولاً خالی بماند. اگر مقدار بگیرد، fallback کانال‌ها غیرفعال می‌شود |
+| `Browser__Channels__0` | `chrome` و سپس `msedge`؛ مرورگر نصب‌شده‌ای که اگر build خود Playwright روی میزبان بالا نیاید جایگزین می‌شود. برای غیرفعال‌کردن، آرایه را خالی بگذارید |
+| `Browser__IgnoreDefaultArgs__0` | `--enable-automation`؛ این سوییچ باعث می‌شود سایت ورود دستی خودِ شما را ربات تشخیص دهد |
+| `Browser__Args__0` | `--disable-dev-shm-usage` و `--disable-blink-features=AutomationControlled` |
+| `Browser__DesktopPort` | `6080`؛ پورت loopback سرویس noVNC. برنامه در دسترس بودنش را بررسی می‌کند |
 | `Browser__NavigationTimeoutMs` | 60000 |
 | `Browser__GenerationTimeoutSeconds` | 600 |
 | `Browser__StableSeconds` | 8؛ پایداری تصویر پس از پایان دکمه Stop |
@@ -119,12 +133,15 @@ Volumeها:
 
 ## نگهداری selectorها و محدودیت automation
 
+مرورگر به این ترتیب انتخاب می‌شود: اول build خود Playwright، و اگر روی آن میزبان بالا نیامد به‌ترتیب `Browser:Channels` (پیش‌فرض `chrome` سپس `msedge`). هر تلاش ناموفق یک warning لاگ می‌کند و اگر همه شکست بخورند خطای اولین تلاش بالا می‌آید. روی بعضی نصب‌های ویندوز، `chrome.exe` مربوط به Chrome for Testing با خطای «side-by-side configuration is incorrect» اجرا نمی‌شود (رویداد SideBySide با کد ۳۳ در Application event log) در حالی که headless shell سالم کار می‌کند؛ همین fallback آن حالت را پوشش می‌دهد. اگر مرورگر مشخصی می‌خواهید، `Browser__ExecutablePath` را تنظیم کنید.
+
 تمام selectorها در `BrowserAutomation/BrowserOptions.cs` و بخش `Browser:Selectors` پیکربندی متمرکز هستند. برای تنظیم با نسخه سایت خود، DOM قابل‌مشاهده را در Chromium بررسی کنید. هیچ selectorی از API داخلی سایت ساخته نمی‌شود.
 
 | Selector | نقش |
 |---|---|
 | Composer | کادر متن قابل‌ویرایش |
 | LoggedIn / LoggedOut | کنترل حساب واردشده و دکمه ورود؛ وجود composer به‌تنهایی معیار ورود نیست |
+| Challenge | صفحه تأیید انسان بودن؛ پیش از بقیه بررسی می‌شود تا با «نیاز به ورود» اشتباه گرفته نشود |
 | Send / Stop | ارسال و وضعیت تولید پاسخ |
 | Assistant | ظرف پیام‌های دستیار، برای جداکردن پاسخ جدید از تاریخچه |
 | GeneratedImage | تصویر تولیدشده داخل آخرین پیام دستیار |
@@ -135,7 +152,7 @@ Volumeها:
 
 Navigation حداکثر سه بار تلاش می‌کند. **ارسال prompt دوباره تلاش نمی‌شود**؛ بعد از timeout ممکن است سایت درخواست را پذیرفته باشد. عملیات ناتمام پس از restart با `Interrupted` شکست می‌خورد و خودکار ارسال مجدد نمی‌شود؛ queuedها باقی می‌مانند. خطاها در DB با کد امن ذخیره و در UI ترجمه می‌شوند. لاگ‌ها متن exception مرورگر، prompt، کوکی یا token را چاپ نمی‌کنند.
 
-`GenerationTimeout` معمولاً به selector قدیمی، پاسخ بدون تصویر، محدودیت حساب یا طولانی‌شدن تولید مربوط است. `LoginRequired` نیاز به ورود دستی یا اصلاح selector حساب دارد. `AutomationFailed` نیازمند بررسی مرورگر و تنظیمات DOM است. قبل از ارسال مجدد، چت را ببینید.
+`GenerationTimeout` معمولاً به selector قدیمی، پاسخ بدون تصویر، محدودیت حساب یا طولانی‌شدن تولید مربوط است. `LoginRequired` نیاز به ورود دستی یا اصلاح selector حساب دارد. `VerificationRequired` یعنی سایت صفحه تأیید انسان بودن را نشان می‌دهد؛ فقط خودتان می‌توانید آن را در همان پنجره مرورگر رد کنید و برنامه هیچ تلاشی برای دورزدنش نمی‌کند. `AutomationFailed` نیازمند بررسی مرورگر و تنظیمات DOM است. قبل از ارسال مجدد، چت را ببینید.
 
 ## API و امنیت
 
@@ -190,6 +207,8 @@ Migration جدید: `dotnet ef migrations add Name --project src/Loomi --output-
 
 ## English quick start
 
-Restore .NET packages, run `npm ci` and `npm run build` in `src/Loomi/Client`, build the solution, install Chromium with the generated Playwright PowerShell script, then run `scripts/dev.ps1` or `scripts/dev.sh`. Provide a random workspace access key of at least 32 characters. Open localhost:5080, unlock Loomi, connect Chromium, log into ChatGPT manually, then create a project and submit an image prompt.
+Restore .NET packages, run `npm ci` and `npm run build` in `src/Loomi/Client`, then run `scripts/dev.ps1` or `scripts/dev.sh` — each builds the solution and installs the Chromium build that matches the referenced Playwright version. Open localhost:5080, unlock Loomi, connect Chromium, log into ChatGPT manually, then create a project and submit an image prompt. Set `Security__AccessKey` to a random secret of at least 32 characters to use your own workspace key.
+
+A plain `dotnet run` in the Development environment needs no configuration: it falls back to the built-in key `loomi-development-access-key-change-me`, logs a startup warning, and prefills it on the login form. Startup refuses that key in any other environment, and `GET /api/session` never reveals a key you configured yourself.
 
 For Linux production, configure `.env`, build with Docker Compose and place the loopback app port behind a trusted HTTPS proxy using the provided Nginx example. Only the authenticated app exposes noVNC. Back up all three private volumes. Live ChatGPT selectors and account-specific image generation require manual acceptance testing; the browser fixture tests do not establish compatibility with the live site.

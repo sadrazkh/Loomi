@@ -4,6 +4,7 @@ using System.Threading.RateLimiting;
 using Loomi.BrowserAutomation;
 using Loomi.Data;
 using Loomi.Repositories;
+using Loomi.Security;
 using Loomi.Services;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -18,8 +19,12 @@ builder.Logging.AddConsole();
 var root = Path.GetFullPath(builder.Configuration["Storage:Root"] ?? "Storage");
 Directory.CreateDirectory(root);
 var accessKey = builder.Configuration["Security:AccessKey"];
+if (string.IsNullOrWhiteSpace(accessKey) && builder.Environment.IsDevelopment())
+    builder.Configuration["Security:AccessKey"] = accessKey = DevelopmentAccess.Key;
 if (string.IsNullOrWhiteSpace(accessKey) || accessKey.Length < 32)
     throw new InvalidOperationException("Set Security__AccessKey to a random secret of at least 32 characters before starting Loomi.");
+if (accessKey == DevelopmentAccess.Key && !builder.Environment.IsDevelopment())
+    throw new InvalidOperationException("The built-in development access key cannot be used outside the Development environment. Set Security__AccessKey to a random secret of at least 32 characters.");
 builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(root, "keys"))).SetApplicationName("Loomi");
 builder.Services.AddDbContext<AppDbContext>(o => o.UseSqlite($"Data Source={Path.Combine(root, "loomi.db")};Foreign Keys=True;Default Timeout=30"));
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o =>
@@ -53,8 +58,10 @@ builder.Services.AddScoped<GenerationService>();
 builder.Services.AddHostedService<GenerationWorker>();
 builder.Services.AddReverseProxy().LoadFromMemory(
     [new RouteConfig { RouteId = "desktop", ClusterId = "desktop", Match = new() { Path = "/desktop/{**rest}" }, Transforms = [new Dictionary<string,string> { ["PathRemovePrefix"] = "/desktop" }, new Dictionary<string,string> { ["RequestHeaderRemove"] = "Cookie" }] }],
-    [new ClusterConfig { ClusterId = "desktop", Destinations = new Dictionary<string,DestinationConfig> { ["local"] = new() { Address = "http://127.0.0.1:6080/" } } }]);
+    [new ClusterConfig { ClusterId = "desktop", Destinations = new Dictionary<string,DestinationConfig> { ["local"] = new() { Address = $"http://127.0.0.1:{builder.Configuration.GetValue("Browser:DesktopPort", 6080)}/" } } }]);
 var app = builder.Build();
+if (accessKey == DevelopmentAccess.Key)
+    app.Logger.LogWarning("Development mode: unlocking Loomi with the built-in access key \"{Key}\". Set Security__AccessKey to your own secret for anything but local testing.", DevelopmentAccess.Key);
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
