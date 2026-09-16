@@ -107,7 +107,7 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
         }
         catch (PlaywrightException) { state = "Disconnected"; }
     }
-    public async Task<BrowserResult> RunAsync(Operation operation, string prompt, string? parentImage, string? conversation, ReportStatus report, CancellationToken ct)
+    public async Task<BrowserResult> RunAsync(Operation operation, string prompt, IReadOnlyList<string> inputs, string? conversation, ReportStatus report, CancellationToken ct)
     {
         await gate.WaitAsync(ct);
         try
@@ -120,14 +120,7 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             await DetectAsync();
             if (state != "Connected") throw new InvalidOperationException(state == "VerificationRequired" ? "VerificationRequired" : "LoginRequired");
             ct.ThrowIfCancellationRequested();
-            if (parentImage != null)
-            {
-                var input = page.Locator(settings.Selectors.FileInput);
-                if (await input.CountAsync() == 0) await page.Locator(settings.Selectors.AttachmentMenu).First.ClickAsync();
-                await input.First.SetInputFilesAsync(parentImage);
-                await page.Locator(settings.Selectors.UploadReady).First.WaitForAsync();
-                await page.Locator(settings.Selectors.UploadBusy).First.WaitForAsync(new() { State = WaitForSelectorState.Hidden, Timeout = 60000 });
-            }
+            if (inputs.Count > 0) await AttachAsync(inputs, ct);
             var before = await page.Locator(settings.Selectors.Assistant).CountAsync();
             // Counted across the page, not inside the reply: the site renders a generated image in the conversation turn,
             // outside the assistant message element, so scoping the search there finds nothing however new the image is.
@@ -185,6 +178,34 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             throw new InvalidOperationException("GenerationTimeout");
         }
         finally { gate.Release(); }
+    }
+    /// <summary>Sends the files through the composer's own input. One that takes several at once gets them in a single call; one that does not gets them one by one,
+    /// the site adding each to its attachments. Either way the run waits until every file shows its remove control and nothing is still uploading.</summary>
+    private async Task AttachAsync(IReadOnlyList<string> inputs, CancellationToken ct)
+    {
+        var input = page!.Locator(settings.Selectors.FileInput);
+        if (await input.CountAsync() == 0) await page.Locator(settings.Selectors.AttachmentMenu).First.ClickAsync();
+        var multiple = await input.First.EvaluateAsync<bool>("el => el.multiple");
+        List<string[]> batches = multiple ? [inputs.ToArray()] : [.. inputs.Select(path => new[] { path })];
+        var attached = 0;
+        foreach (var batch in batches)
+        {
+            // Located afresh each time: the site may replace its input after a selection.
+            await page.Locator(settings.Selectors.FileInput).First.SetInputFilesAsync(batch);
+            attached += batch.Length;
+            await WaitForCountAsync(settings.Selectors.UploadReady, attached, ct);
+        }
+        await page.Locator(settings.Selectors.UploadBusy).First.WaitForAsync(new() { State = WaitForSelectorState.Hidden, Timeout = settings.UploadTimeoutMs });
+    }
+    /// <summary>Playwright waits for one element, not for a number of them, so the count is polled.</summary>
+    private async Task WaitForCountAsync(string selector, int count, CancellationToken ct)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(settings.UploadTimeoutMs);
+        while (await page!.Locator(selector).CountAsync() < count)
+        {
+            if (DateTime.UtcNow > deadline) throw new InvalidOperationException("UploadFailed");
+            await Task.Delay(250, ct);
+        }
     }
     public async ValueTask DisposeAsync()
     {

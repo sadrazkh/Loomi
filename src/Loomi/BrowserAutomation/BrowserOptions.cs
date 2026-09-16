@@ -15,6 +15,10 @@ public class BrowserOptions
     public int SettleTimeoutMs { get; set; } = 15000;
     public int GenerationTimeoutSeconds { get; set; } = 600;
     public int StableSeconds { get; set; } = 8;
+    /// <summary>How many reference images one generation may carry, and how many files one upload request may hold.</summary>
+    public int MaxInputs { get; set; } = 4;
+    /// <summary>How long the site may take to show every attachment as ready before the run gives up on it.</summary>
+    public int UploadTimeoutMs { get; set; } = 60000;
     public Selectors Selectors { get; set; } = new();
 }
 public class Selectors
@@ -29,7 +33,8 @@ public class Selectors
     public string Assistant { get; set; } = "[data-message-author-role='assistant']";
     public string GeneratedImage { get; set; } = "img[alt*='Generated'], img[alt*='generated'], img[alt*='تصویر']";
     public string FileInput { get; set; } = "input[type='file']";
-    public string AttachmentMenu { get; set; } = "button[aria-label*='Add photos'], button[aria-label*='Attach'], button[data-testid='composer-plus-btn']";
+    /// <summary>Only needed when the composer renders no file input until its menu opens; the live site currently has the input in the page already.</summary>
+    public string AttachmentMenu { get; set; } = "button[aria-label*='Add files'], button[aria-label*='Add photos'], button[aria-label*='Attach'], button[data-testid='composer-plus-btn']";
     public string UploadReady { get; set; } = "button[aria-label*='Remove file'], button[aria-label*='Remove attachment']";
     public string UploadBusy { get; set; } = "[role='progressbar']";
 }

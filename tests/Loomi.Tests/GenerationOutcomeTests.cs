@@ -54,7 +54,7 @@ public class GenerationOutcomeTests
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Storage:Root"] = root }).Build();
         var options = new BrowserOptions { Headless = true, StableSeconds = 1, GenerationTimeoutSeconds = 60 };
         await using var session = new BrowserSession("default", Options.Create(options), config, launcher);
-        var result = await session.RunAsync(Operation.Generate, "a red square", null, null, (_, _) => Task.CompletedTask, default);
+        var result = await session.RunAsync(Operation.Generate, "a red square", [], null, (_, _) => Task.CompletedTask, default);
         Assert.True(result.Image.Length > 100);
         Assert.EndsWith("/c/turn-conversation", result.ConversationUrl);
         Directory.Delete(root, true);
@@ -71,7 +71,7 @@ public class GenerationOutcomeTests
         await using var session = new BrowserSession("default", Options.Create(options), config, launcher);
         var started = DateTime.UtcNow;
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => session.RunAsync(Operation.Generate, "a red circle", null, null, (_, _) => Task.CompletedTask, default));
+            () => session.RunAsync(Operation.Generate, "a red circle", [], null, (_, _) => Task.CompletedTask, default));
         Assert.Equal("NoImageReturned", failure.Message);
         // The point of the change: it must not sit until GenerationTimeoutSeconds.
         Assert.True(DateTime.UtcNow - started < TimeSpan.FromSeconds(60), $"gave up after {(DateTime.UtcNow - started).TotalSeconds:0}s");

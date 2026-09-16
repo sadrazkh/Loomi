@@ -29,11 +29,11 @@ public class ProjectsController(AppDbContext db, ProjectRepository projects, Gen
     [HttpGet("{id:guid}/generations")] public async Task<IActionResult> ListGenerations(Guid id, CancellationToken ct)
     {
         if (!await db.Projects.OwnedBy(Me).AnyAsync(x => x.Id == id, ct)) return NotFound();
-        return Ok((await db.Generations.AsNoTracking().Where(g => g.ProjectId == id).OrderBy(g => g.CreatedAt).ToListAsync(ct)).Select(GenerationDto.From));
+        return Ok((await db.Generations.AsNoTracking().Include(g => g.Inputs).Where(g => g.ProjectId == id).OrderBy(g => g.CreatedAt).ToListAsync(ct)).Select(GenerationDto.From));
     }
     [HttpPost("{id:guid}/generate")] public async Task<IActionResult> Generate(Guid id, PromptRequest request, CancellationToken ct)
     {
-        var g = await generations.SubmitAsync(Me, id, request.Prompt, Provider.ChatGPT, Operation.Generate, null, ct);
+        var g = await generations.SubmitAsync(Me, id, request.Prompt, Provider.ChatGPT, Operation.Generate, null, request.Inputs, ct);
         return Accepted($"/api/generations/{g.Id}", GenerationDto.From(g));
     }
     [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct)

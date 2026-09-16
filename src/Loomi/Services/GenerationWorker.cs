@@ -10,7 +10,10 @@ namespace Loomi.Services;
 /// <summary>Spreads the queue over the usable accounts: one run per account at a time, each row given to an account of its own provider and claimed in the database so two accounts can never take the same work.</summary>
 public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry providers, IImageStorage storage, IHubContext<StatusHub> hub, AccountHealth health, ILogger<GenerationWorker> logger) : BackgroundService
 {
-    private static readonly string[] Reportable = ["LoginRequired", "VerificationRequired", "GenerationTimeout", "InvalidImage", "ConversationNotSaved", "NoAccount", "NoImageReturned", "QuotaExceeded", "ContentBlocked"];
+    private static readonly string[] Reportable = ["LoginRequired", "VerificationRequired", "GenerationTimeout", "InvalidImage", "ConversationNotSaved", "NoAccount", "NoImageReturned", "QuotaExceeded", "ContentBlocked", "UploadFailed", "InputMissing"];
+    /// <summary>Picked files nobody sent are dropped once a day old; checked hourly, so the check itself costs nothing.</summary>
+    private static readonly TimeSpan SweepInterval = TimeSpan.FromHours(1);
+    private DateTime nextSweep = DateTime.MinValue;
     /// <summary>Only the dispatch loop touches this, so the count of runs in flight never needs a lock.</summary>
     private readonly Dictionary<Guid, Task> running = [];
     /// <summary>Runs in flight, so a cancel can reach one that has already left the queue.</summary>
@@ -39,6 +42,7 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
             try
             {
                 foreach (var account in running.Where(x => x.Value.IsCompleted).Select(x => x.Key).ToList()) running.Remove(account);
+                if (DateTime.UtcNow >= nextSweep) { await SweepUploadsAsync(stoppingToken); nextSweep = DateTime.UtcNow + SweepInterval; }
                 if (!await DispatchAsync(stoppingToken)) await Task.Delay(1000, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
@@ -61,6 +65,37 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
         foreach (var project in await db.Projects.ToListAsync(ct))
             project.Status = await db.Generations.AnyAsync(g => g.ProjectId == project.Id && g.Status == RunStatus.Queued, ct) ? "Queued" : "Ready";
         await db.SaveChangesAsync(ct);
+    }
+    private async Task SweepUploadsAsync(CancellationToken ct)
+    {
+        using var scope = scopes.CreateScope();
+        await SweepUploadsAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>(), storage, DateTime.UtcNow, ct);
+    }
+    /// <summary>Drops uploads nothing ever used once they are a day old: a file somebody picked and never sent. One a generation refers to stays as long as the generation does.</summary>
+    public static async Task<int> SweepUploadsAsync(AppDbContext db, IImageStorage storage, DateTime now, CancellationToken ct)
+    {
+        var cutoff = now.AddHours(-24);
+        var orphans = await db.Uploads.Where(u => u.CreatedAt < cutoff && !db.GenerationInputs.Any(i => i.UploadId == u.Id)).ToListAsync(ct);
+        foreach (var upload in orphans) { storage.Delete(upload.Path); db.Uploads.Remove(upload); }
+        await db.SaveChangesAsync(ct);
+        return orphans.Count;
+    }
+    /// <summary>The files to send, in the order recorded. A row queued before inputs existed carries only its parent, which is still sent; a file gone since then fails the run rather than quietly sending fewer.</summary>
+    private async Task<List<string>> InputPathsAsync(AppDbContext db, Generation g, Generation? parent, CancellationToken ct)
+    {
+        if (g.Inputs.Count == 0) return parent?.LocalImagePath is { } path ? [storage.Resolve(path)] : [];
+        var uploads = g.Inputs.Where(i => i.UploadId != null).Select(i => i.UploadId!.Value).ToList();
+        var sources = g.Inputs.Where(i => i.SourceGenerationId != null).Select(i => i.SourceGenerationId!.Value).ToList();
+        var uploadPaths = await db.Uploads.AsNoTracking().Where(u => uploads.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.Path, ct);
+        var sourcePaths = await db.Generations.AsNoTracking().Where(x => sources.Contains(x.Id) && x.LocalImagePath != null).ToDictionaryAsync(x => x.Id, x => x.LocalImagePath!, ct);
+        var paths = new List<string>();
+        foreach (var input in g.Inputs.OrderBy(i => i.Order))
+        {
+            var relative = input.UploadId is { } upload ? uploadPaths.GetValueOrDefault(upload) : sourcePaths.GetValueOrDefault(input.SourceGenerationId!.Value);
+            if (relative == null || !File.Exists(storage.Resolve(relative))) throw new InvalidOperationException("InputMissing");
+            paths.Add(storage.Resolve(relative));
+        }
+        return paths;
     }
     private async Task<bool> DispatchAsync(CancellationToken ct)
     {
@@ -122,7 +157,7 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
         try
         {
             var account = await db.Accounts.FirstAsync(a => a.Id == accountId, ct);
-            var g = await db.Generations.Include(x => x.Project).FirstAsync(x => x.Id == generationId, ct);
+            var g = await db.Generations.Include(x => x.Project).Include(x => x.Inputs).FirstAsync(x => x.Id == generationId, ct);
             async Task Report(RunStatus status, string? conversation = null)
             {
                 g.Status = status; g.Project.Status = status.ToString(); g.Project.UpdatedAt = DateTime.UtcNow;
@@ -134,8 +169,7 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
             try
             {
                 Generation? parent = g.ParentGenerationId == null ? null : await db.Generations.FindAsync([g.ParentGenerationId.Value], ct);
-                var inputs = parent?.LocalImagePath is { } path ? new[] { storage.Resolve(path) } : [];
-                var request = new GenerationRequest(account.Provider, g.Operation, g.Prompt, inputs, parent?.ConversationUrl);
+                var request = new GenerationRequest(account.Provider, g.Operation, g.Prompt, await InputPathsAsync(db, g, parent, ct), parent?.ConversationUrl);
                 var result = await providers.For(account.Provider).RunAsync(account, request, Report, ct);
                 g.LocalImagePath = await storage.SaveAsync(g.ProjectId, g.Id, result.Image, ct);
                 g.ConversationUrl = result.ConversationUrl; g.Project.ConversationUrl = result.ConversationUrl;
@@ -162,7 +196,7 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
     {
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var g = await db.Generations.Include(x => x.Project).FirstOrDefaultAsync(x => x.Id == generationId);
+        var g = await db.Generations.Include(x => x.Project).Include(x => x.Inputs).FirstOrDefaultAsync(x => x.Id == generationId);
         if (g == null) return;
         g.Status = status;
         g.Project.Status = await db.Generations.AnyAsync(x => x.ProjectId == g.ProjectId && x.Status == RunStatus.Queued) ? "Queued" : "Ready";

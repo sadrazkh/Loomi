@@ -11,4 +11,5 @@ public static class Ownership
 {
     public static IQueryable<ImageProject> OwnedBy(this IQueryable<ImageProject> projects, Viewer viewer) => projects.Where(x => viewer.IsOwner || x.UserId == viewer.Id);
     public static IQueryable<Generation> OwnedBy(this IQueryable<Generation> generations, Viewer viewer) => generations.Where(x => viewer.IsOwner || x.UserId == viewer.Id);
+    public static IQueryable<Upload> OwnedBy(this IQueryable<Upload> uploads, Viewer viewer) => uploads.Where(x => viewer.IsOwner || x.UserId == viewer.Id);
 }

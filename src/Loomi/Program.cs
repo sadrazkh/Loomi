@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Loomi.BrowserAutomation;
+using Loomi.Controllers;
 using Loomi.Data;
 using Loomi.Models;
 using Loomi.Providers;
@@ -14,6 +15,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.OpenApi;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Yarp.ReverseProxy.Configuration;
@@ -104,10 +106,12 @@ app.Use(async (ctx, next) =>
     ctx.Response.Headers["X-Frame-Options"] = "SAMEORIGIN";
     ctx.Response.Headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' ws: wss:; frame-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'";
     if (ctx.Request.Path.StartsWithSegments("/api") || ctx.Request.Path.StartsWithSegments("/desktop")) ctx.Response.Headers.CacheControl = "no-store";
+    // Raised here, before the antiforgery check reads the form: the server's default body limit is smaller than four images, and MVC's own attribute comes too late for that read.
+    if (ctx.Request.Path.StartsWithSegments("/api/uploads") && ctx.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } size) size.MaxRequestBodySize = UploadsController.MaxRequestBytes;
     if (ctx.WebSockets.IsWebSocketRequest && ctx.Request.Headers.Origin.ToString() != $"{ctx.Request.Scheme}://{ctx.Request.Host}") { ctx.Response.StatusCode = 403; return; }
     try { await next(); }
     catch (KeyNotFoundException) { ctx.Response.StatusCode = 404; await ctx.Response.WriteAsJsonAsync(new { error = "NotFound" }); }
-    catch (InvalidOperationException ex) when (new[] { "BrowserBusy", "QueueFull", "InvalidParent", "InvalidPrompt", "ProjectBusy", "NoAccount", "QuotaExceeded", "InsufficientCredits" }.Contains(ex.Message))
+    catch (InvalidOperationException ex) when (new[] { "BrowserBusy", "QueueFull", "InvalidParent", "InvalidPrompt", "ProjectBusy", "NoAccount", "QuotaExceeded", "InsufficientCredits", "TooManyInputs", "InvalidInput", "UploadInUse" }.Contains(ex.Message))
     { ctx.Response.StatusCode = 409; await ctx.Response.WriteAsJsonAsync(new { error = ex.Message }); }
     catch (Exception ex) when (!ctx.Response.HasStarted && ex is not OperationCanceledException)
     { app.Logger.LogError("Request failed ({Type})", ex.GetType().Name); ctx.Response.StatusCode = 500; await ctx.Response.WriteAsJsonAsync(new { error = "ServerError" }); }

@@ -15,6 +15,32 @@ public class FixtureLauncher : IChromiumLauncher, IAsyncDisposable
     public List<string> Visits { get; } = [];
     /// <summary>Replaces the ChatGPT stand-in, so tests can serve an interstitial instead.</summary>
     public string? Body { get; init; }
+    /// <summary>The stand-in composer. Attachments accumulate across change events and each one renders its own remove button, which is how the real site behaves whether or not its input takes several files at once.</summary>
+    public static string BodyWith(bool multiple) => $$"""
+        <html><body>
+        <button data-testid="accounts-profile-button">Account</button>
+        <textarea id="prompt-textarea"></textarea><input type="file" {{(multiple ? "multiple" : "")}} onchange="attach(this)">
+        <div id="attachments"></div>
+        <button data-testid="send-button" onclick="send()">Send</button>
+        <script>
+        window.attached = 0;
+        function attach(input) {
+          window.attached += input.files.length;
+          document.querySelector('#attachments').innerHTML = Array.from({length: window.attached}, () => '<button aria-label="Remove file">Remove</button>').join('');
+        }
+        function send() {
+          const prompt = document.querySelector('textarea').value;
+          history.replaceState({},'', '/c/fixture-conversation');
+          window.submission = {prompt, files:window.attached};
+          if (prompt === 'timeout') return;
+          const reply = document.createElement('div'); reply.dataset.messageAuthorRole = 'assistant';
+          const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
+          const ctx = canvas.getContext('2d'); ctx.fillStyle = '#7aa5cf'; ctx.fillRect(0,0,256,256);
+          const image = document.createElement('img'); image.alt = 'Generated image'; image.src = canvas.toDataURL('image/png');
+          reply.append(image); document.body.append(reply);
+        }
+        </script></body></html>
+        """;
     public async Task<IBrowserContext> LaunchAsync(string profile, BrowserOptions options)
     {
         await launching.WaitAsync();
@@ -26,26 +52,7 @@ public class FixtureLauncher : IChromiumLauncher, IAsyncDisposable
         await context.RouteAsync("**/*", async route =>
         {
             Visits.Add(route.Request.Url);
-            await route.FulfillAsync(new() { ContentType = "text/html", Body = Body ?? """
-                <html><body>
-                <button data-testid="accounts-profile-button">Account</button>
-                <textarea id="prompt-textarea"></textarea><input type="file" onchange="document.querySelector('#ready').hidden=false">
-                <button id="ready" aria-label="Remove file" hidden>Remove</button>
-                <button data-testid="send-button" onclick="send()">Send</button>
-                <script>
-                function send() {
-                  const prompt = document.querySelector('textarea').value;
-                  history.replaceState({},'', '/c/fixture-conversation');
-                  window.submission = {prompt, files:document.querySelector('input').files.length};
-                  if (prompt === 'timeout') return;
-                  const reply = document.createElement('div'); reply.dataset.messageAuthorRole = 'assistant';
-                  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
-                  const ctx = canvas.getContext('2d'); ctx.fillStyle = '#7aa5cf'; ctx.fillRect(0,0,256,256);
-                  const image = document.createElement('img'); image.alt = 'Generated image'; image.src = canvas.toDataURL('image/png');
-                  reply.append(image); document.body.append(reply);
-                }
-                </script></body></html>
-                """ });
+            await route.FulfillAsync(new() { ContentType = "text/html", Body = Body ?? BodyWith(true) });
         });
         return context;
     }
@@ -65,7 +72,7 @@ public class BrowserTests
             await using var service = new BrowserSession("default", Options.Create(new BrowserOptions { Headless = true, StableSeconds = 1, GenerationTimeoutSeconds = 20 }), config, launcher);
             Assert.Equal("Connected", (await service.ConnectAsync(default)).State);
             var statuses = new List<RunStatus>();
-            var generated = await service.RunAsync(Operation.Generate, "initial", null, null, (s, _) => { statuses.Add(s); return Task.CompletedTask; }, default);
+            var generated = await service.RunAsync(Operation.Generate, "initial", [], null, (s, _) => { statuses.Add(s); return Task.CompletedTask; }, default);
             Assert.StartsWith("https://chatgpt.com/c/", generated.ConversationUrl);
             Assert.True(generated.Image.Length > 100);
             Assert.Contains(RunStatus.DownloadingImage, statuses);
@@ -73,7 +80,7 @@ public class BrowserTests
             foreach (var operation in new[] { Operation.Edit, Operation.Branch })
             {
                 launcher.Visits.Clear();
-                await service.RunAsync(operation, "change", path, generated.ConversationUrl, (_, _) => Task.CompletedTask, default);
+                await service.RunAsync(operation, "change", [path], generated.ConversationUrl, (_, _) => Task.CompletedTask, default);
                 Assert.Equal(operation == Operation.Edit ? generated.ConversationUrl : "https://chatgpt.com/", launcher.Visits[0]);
                 Assert.Equal(1, await launcher.Context.Pages[0].EvaluateAsync<int>("window.submission.files"));
                 Assert.Equal("change", await launcher.Context.Pages[0].EvaluateAsync<string>("window.submission.prompt"));
@@ -93,7 +100,7 @@ public class BrowserTests
             var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?> { ["Storage:Root"] = root }).Build();
             await using var service = new BrowserSession("default", Options.Create(new BrowserOptions { Headless = true, GenerationTimeoutSeconds = 2 }), config, launcher);
             string? conversation = null;
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RunAsync(Operation.Generate, "timeout", null, null, (_, url) => { if (url != null) conversation = url; return Task.CompletedTask; }, default));
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RunAsync(Operation.Generate, "timeout", [], null, (_, url) => { if (url != null) conversation = url; return Task.CompletedTask; }, default));
             Assert.Equal("GenerationTimeout", ex.Message);
             Assert.Equal("https://chatgpt.com/c/fixture-conversation", conversation);
             Assert.Equal("timeout", await launcher.Context.Pages[0].EvaluateAsync<string>("window.submission.prompt"));

@@ -11,8 +11,7 @@ public sealed class ChatGptProvider(BrowserPool pool) : IImageProvider
     public Task<ConnectionStatus> StatusAsync(ProviderAccount account) => pool.RunAsync(account, s => s.StatusAsync());
     public Task<ConnectionStatus> ConnectAsync(ProviderAccount account, CancellationToken ct) => pool.RunAsync(account, s => s.ConnectAsync(ct));
     public Task ResetAsync(ProviderAccount account, CancellationToken ct) => pool.RunAsync(account, s => s.ResetAsync(ct));
-    // Only the first input is sent for now: multi-image upload is verified against the live site in its own phase.
     public Task<BrowserResult> RunAsync(ProviderAccount account, GenerationRequest request, ReportStatus report, CancellationToken ct)
-        => pool.RunAsync(account, s => s.RunAsync(request.Operation, request.Prompt, request.InputPaths.Count > 0 ? request.InputPaths[0] : null, request.ParentConversation, report, ct));
+        => pool.RunAsync(account, s => s.RunAsync(request.Operation, request.Prompt, request.InputPaths, request.ParentConversation, report, ct));
     public Task DiscardAsync(Guid accountId) => pool.DiscardAsync(accountId);
 }
