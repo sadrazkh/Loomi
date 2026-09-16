@@ -41,6 +41,7 @@ public class OwnershipTests
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var user = new AppUser { Username = username, NormalizedUsername = username.ToLowerInvariant(), Role = role, IsDisabled = disabled };
+        db.CreditEntries.Add(new CreditEntry { UserId = user.Id, Amount = 1000, Kind = CreditKind.Grant });
         user.PasswordHash = scope.ServiceProvider.GetRequiredService<PasswordService>().Hash(user, password);
         db.Users.Add(user); await db.SaveChangesAsync(); return user;
     }
@@ -64,7 +65,8 @@ public class OwnershipTests
         Assert.True(session.GetProperty("authenticated").GetBoolean());
         Assert.Equal("owner", session.GetProperty("username").GetString());
         Assert.Equal("Owner", session.GetProperty("role").GetString());
-        Assert.Equal(int.MaxValue, session.GetProperty("dailyQuota").GetInt32());
+        // Zero is what says no daily limit; the owner has none.
+        Assert.Equal(0, session.GetProperty("dailyQuota").GetInt32());
         using var scope = factory.Services.CreateScope();
         var owner = await scope.ServiceProvider.GetRequiredService<AppDbContext>().Users.SingleAsync();
         Assert.DoesNotContain(AppFactory.Key, owner.PasswordHash, StringComparison.Ordinal);

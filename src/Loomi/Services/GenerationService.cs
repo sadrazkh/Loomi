@@ -21,6 +21,18 @@ public class GenerationService(AppDbContext db)
         }
         // The project's user, not the actor: an owner helping out must not spend their own quota or take the work over.
         var generation = new Generation { ProjectId = projectId, UserId = project.UserId, Provider = provider, Prompt = prompt.Trim(), Operation = operation, ParentGenerationId = parentId };
+        // The owner pays for the provider accounts themselves, so charging them their own credits would be bookkeeping with nothing behind it,
+        // and work whose user no longer exists has no balance to spend — the same reasoning the daily quota uses.
+        if (await db.Users.AsNoTracking().Where(u => u.Id == project.UserId).Select(u => (UserRole?)u.Role).FirstOrDefaultAsync(ct) == UserRole.Member)
+        {
+            var price = await db.PriceAsync(provider, operation, ct);
+            if (price > 0)
+            {
+                if (await db.BalanceAsync(project.UserId, ct) < price) throw new InvalidOperationException("InsufficientCredits");
+                generation.CreditCost = price;
+                db.CreditEntries.Add(new CreditEntry { UserId = project.UserId, Amount = -price, Kind = CreditKind.Charge, GenerationId = generation.Id });
+            }
+        }
         db.Generations.Add(generation);
         project.UpdatedAt = DateTime.UtcNow; project.Status = "Queued";
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);

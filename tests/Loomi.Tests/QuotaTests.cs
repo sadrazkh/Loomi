@@ -26,6 +26,7 @@ public class QuotaTests
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var user = new AppUser { Username = "mia", NormalizedUsername = "mia", DailyQuota = quota };
+        db.CreditEntries.Add(new CreditEntry { UserId = user.Id, Amount = 1000, Kind = CreditKind.Grant });
         user.PasswordHash = scope.ServiceProvider.GetRequiredService<PasswordService>().Hash(user, "mia-password");
         var project = new ImageProject { UserId = user.Id, Title = "Quota" };
         db.Users.Add(user); db.Projects.Add(project);
@@ -80,6 +81,7 @@ public class QuotaTests
         // The member's spent day says nothing about the owner's own allowance.
         var session = await client.GetFromJsonAsync<JsonElement>("/api/session");
         Assert.Equal(0, session.GetProperty("dailyUsed").GetInt32());
-        Assert.Equal(int.MaxValue, session.GetProperty("dailyRemaining").GetInt32());
+        // No daily limit is reported as nothing left to report, not as a number close to infinity.
+        Assert.Equal(JsonValueKind.Null, session.GetProperty("dailyRemaining").ValueKind);
     }
 }

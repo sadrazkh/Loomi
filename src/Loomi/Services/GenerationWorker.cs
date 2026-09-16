@@ -52,8 +52,12 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
     {
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        await db.Generations.Where(g => g.Status != RunStatus.Queued && g.Status != RunStatus.Completed && g.Status != RunStatus.Failed && g.Status != RunStatus.Cancelled)
+        var interrupted = await db.Generations.Where(g => g.Status != RunStatus.Queued && g.Status != RunStatus.Completed && g.Status != RunStatus.Failed && g.Status != RunStatus.Cancelled)
+            .Select(g => g.Id).ToListAsync(ct);
+        await db.Generations.Where(g => interrupted.Contains(g.Id))
             .ExecuteUpdateAsync(s => s.SetProperty(g => g.Status, RunStatus.Failed).SetProperty(g => g.ErrorMessage, "Interrupted"), ct);
+        // Work the process abandoned charged somebody; it never ran, so the credits go back.
+        foreach (var id in interrupted) await db.RefundAsync(id, ct);
         foreach (var project in await db.Projects.ToListAsync(ct))
             project.Status = await db.Generations.AnyAsync(g => g.ProjectId == project.Id && g.Status == RunStatus.Queued, ct) ? "Queued" : "Ready";
         await db.SaveChangesAsync(ct);
@@ -145,7 +149,8 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
                 // Do not log browser exception text: it can contain URLs, page content or tokens.
                 logger.LogWarning("Generation {GenerationId} failed ({Type})", g.Id, ex.GetType().Name);
                 var code = ErrorCodeFor(ex);
-                if (code != "NoImageReturned" || !await MoveOnAsync(db, g, account, Report, ct)) { g.ErrorMessage = code; await Report(RunStatus.Failed); }
+                // Moving to another account keeps the same row and the same charge; only a real failure gives the credits back.
+                if (code != "NoImageReturned" || !await MoveOnAsync(db, g, account, Report, ct)) { g.ErrorMessage = code; await Report(RunStatus.Failed); await db.RefundAsync(g.Id, ct); }
             }
             g.Project.Status = await db.Generations.AnyAsync(x => x.ProjectId == g.ProjectId && x.Status == RunStatus.Queued, ct) ? "Queued" : "Ready";
             await db.SaveChangesAsync(ct);
@@ -162,6 +167,7 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
         g.Status = status;
         g.Project.Status = await db.Generations.AnyAsync(x => x.ProjectId == g.ProjectId && x.Status == RunStatus.Queued) ? "Queued" : "Ready";
         await db.SaveChangesAsync();
+        if (status is RunStatus.Failed or RunStatus.Cancelled) await db.RefundAsync(generationId, CancellationToken.None);
         try { await NotifyAsync(hub, g, CancellationToken.None); } catch { /* polling repairs missed notifications */ }
     }
     /// <summary>A reply without an image is this account's image allowance running out, not a broken run. The prompt was answered, so it can never be sent into

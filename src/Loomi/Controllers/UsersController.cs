@@ -8,12 +8,13 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 namespace Loomi.Controllers;
 // Nullable on purpose: a non-nullable string here would make [ApiController] answer bad input with its own ProblemDetails instead of a stable error code.
-public record CreateUser(string? Username, string? Password, int? DailyQuota);
+public record CreateUser(string? Username, string? Password, int? DailyQuota, int? Credits);
+public record GrantCredits(int? Amount, string? Note);
 public record UpdateUser(int? DailyQuota, UserRole? Role, bool? IsDisabled);
 public record ResetPassword(string? Password);
-public record UserDto(Guid Id, string Username, UserRole Role, int DailyQuota, bool IsDisabled, DateTime CreatedAt, int UsedToday)
+public record UserDto(Guid Id, string Username, UserRole Role, int DailyQuota, bool IsDisabled, DateTime CreatedAt, int UsedToday, int Credits)
 {
-    public static UserDto From(AppUser u, int used) => new(u.Id, u.Username, u.Role, u.DailyQuota, u.IsDisabled, u.CreatedAt, used);
+    public static UserDto From(AppUser u, int used, int credits = 0) => new(u.Id, u.Username, u.Role, u.DailyQuota, u.IsDisabled, u.CreatedAt, used, credits);
 }
 [ApiController, Authorize(Roles = nameof(UserRole.Owner)), Route("api/users")]
 public class UsersController(AppDbContext db, PasswordService passwords, IImageStorage storage) : ControllerBase
@@ -31,8 +32,9 @@ public class UsersController(AppDbContext db, PasswordService passwords, IImageS
     [HttpGet] public async Task<IActionResult> List(CancellationToken ct)
     {
         var usage = await UsageAsync(ct);
+        var balances = await db.CreditEntries.AsNoTracking().GroupBy(e => e.UserId).Select(x => new { x.Key, Total = x.Sum(e => e.Amount) }).ToDictionaryAsync(x => x.Key, x => x.Total, ct);
         var users = await db.Users.AsNoTracking().OrderBy(u => u.CreatedAt).ToListAsync(ct);
-        return Ok(users.Select(u => UserDto.From(u, usage.GetValueOrDefault(u.Id))));
+        return Ok(users.Select(u => UserDto.From(u, usage.GetValueOrDefault(u.Id), balances.GetValueOrDefault(u.Id))));
     }
     [HttpPost] public async Task<IActionResult> Create(CreateUser request, CancellationToken ct)
     {
@@ -40,15 +42,17 @@ public class UsersController(AppDbContext db, PasswordService passwords, IImageS
         if (!ValidName(username)) return BadRequest(new { error = "InvalidUsername" });
         if ((request.Password ?? "").Length < MinPassword) return BadRequest(new { error = "WeakPassword" });
         if (request.DailyQuota is < 0 or > MaxQuota) return BadRequest(new { error = "InvalidQuota" });
+        if (request.Credits is < 0 or > 1000000) return BadRequest(new { error = "InvalidCredits" });
         var normalized = username.ToLowerInvariant();
         if (await db.Users.AnyAsync(u => u.NormalizedUsername == normalized, ct)) return Conflict(new { error = "DuplicateUsername" });
         var user = new AppUser { Username = username, NormalizedUsername = normalized, DailyQuota = request.DailyQuota ?? 10 };
         user.PasswordHash = passwords.Hash(user, request.Password!);
         db.Users.Add(user);
+        if (request.Credits is > 0) db.CreditEntries.Add(new CreditEntry { UserId = user.Id, Amount = request.Credits.Value, Kind = CreditKind.Grant, ByUserId = Me.Id, Note = "opening balance" });
         // The check above cannot see a row a concurrent request has not committed yet; the unique index is what actually decides.
         try { await db.SaveChangesAsync(ct); }
         catch (DbUpdateException e) when (e.InnerException is SqliteException { SqliteExtendedErrorCode: SqliteUniqueViolation }) { return Conflict(new { error = "DuplicateUsername" }); }
-        return Created($"/api/users/{user.Id}", UserDto.From(user, 0));
+        return Created($"/api/users/{user.Id}", UserDto.From(user, 0, request.Credits ?? 0));
     }
     [HttpPatch("{id:guid}")] public async Task<IActionResult> Update(Guid id, UpdateUser request, CancellationToken ct)
     {
@@ -62,7 +66,7 @@ public class UsersController(AppDbContext db, PasswordService passwords, IImageS
         if (request.DailyQuota is { } quota) user.DailyQuota = quota;
         user.Role = role; user.IsDisabled = disabled;
         await db.SaveChangesAsync(ct);
-        return Ok(UserDto.From(user, (await UsageAsync(ct)).GetValueOrDefault(id)));
+        return Ok(UserDto.From(user, (await UsageAsync(ct)).GetValueOrDefault(id), await db.BalanceAsync(id, ct)));
     }
     [HttpPost("{id:guid}/password")] public async Task<IActionResult> Password(Guid id, ResetPassword request, CancellationToken ct)
     {
@@ -71,6 +75,20 @@ public class UsersController(AppDbContext db, PasswordService passwords, IImageS
         user.PasswordHash = passwords.Hash(user, request.Password!);
         await db.SaveChangesAsync(ct);
         return NoContent();
+    }
+    [HttpGet("{id:guid}/credits")] public async Task<IActionResult> Credits(Guid id, CancellationToken ct)
+    {
+        await UserAsync(id, ct);
+        return Ok(new { balance = await db.BalanceAsync(id, ct), entries = await CreditsController.LedgerAsync(db, id, ct) });
+    }
+    /// <summary>A grant adds, an adjustment corrects; a negative amount is the second, and the ledger keeps who did it either way.</summary>
+    [HttpPost("{id:guid}/credits")] public async Task<IActionResult> Grant(Guid id, GrantCredits request, CancellationToken ct)
+    {
+        if (request.Amount is null or 0 or < -1000000 or > 1000000) return BadRequest(new { error = "InvalidCredits" });
+        await UserAsync(id, ct);
+        db.CreditEntries.Add(new CreditEntry { UserId = id, Amount = request.Amount.Value, Kind = request.Amount > 0 ? CreditKind.Grant : CreditKind.Adjust, ByUserId = Me.Id, Note = request.Note?.Trim() });
+        await db.SaveChangesAsync(ct);
+        return Ok(new { balance = await db.BalanceAsync(id, ct) });
     }
     /// <summary>A project is the unit of ownership: what sits inside one goes with it, and nothing outside one is touched.</summary>
     [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct)

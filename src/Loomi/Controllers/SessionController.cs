@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Loomi.Data;
 using Loomi.DTOs;
+using Loomi.Models;
 using Loomi.Security;
 using Loomi.Services;
 using Microsoft.AspNetCore.Antiforgery;
@@ -18,7 +19,9 @@ public class SessionController(AppDbContext db, PasswordService passwords, IConf
     {
         var user = User.Identity?.IsAuthenticated == true ? await db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == Viewer.From(User).Id && !x.IsDisabled, ct) : null;
         var used = user == null ? 0 : await db.UsedByAsync(user.Id, ct);
-        return Ok(new { authenticated = user != null, username = user?.Username, role = user?.Role, dailyQuota = user?.DailyQuota, dailyUsed = user == null ? null : (int?)used, dailyRemaining = user is { DailyQuota: > 0 } ? (int?)Math.Max(0, user.DailyQuota - used) : null, csrfToken = antiforgery.GetAndStoreTokens(HttpContext).RequestToken, devAccessKey = user == null ? DevelopmentAccess.Hint(environment, config["Security:AccessKey"]) : null });
+        // Null for an owner: they are not charged, so a number here would suggest a limit that does not exist.
+        var credits = user is { Role: UserRole.Member } ? await db.BalanceAsync(user.Id, ct) : (int?)null;
+        return Ok(new { authenticated = user != null, username = user?.Username, role = user?.Role, dailyQuota = user?.DailyQuota, dailyUsed = user == null ? null : (int?)used, dailyRemaining = user is { DailyQuota: > 0 } ? (int?)Math.Max(0, user.DailyQuota - used) : null, credits, csrfToken = antiforgery.GetAndStoreTokens(HttpContext).RequestToken, devAccessKey = user == null ? DevelopmentAccess.Hint(environment, config["Security:AccessKey"]) : null });
     }
     [HttpPost("login"), EnableRateLimiting("login")]
     public async Task<IActionResult> Login(LoginRequest request, CancellationToken ct)

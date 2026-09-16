@@ -42,6 +42,7 @@ public class GenerationsController(AppDbContext db, GenerationService service, I
         g.Status = RunStatus.Cancelled;
         g.Project.Status = await db.Generations.AnyAsync(x => x.ProjectId == g.ProjectId && x.Id != g.Id && x.Status == RunStatus.Queued, ct) ? "Queued" : "Ready";
         await db.SaveChangesAsync(ct);
+        await db.RefundAsync(g.Id, ct);
         return g;
     }
     [HttpGet("{id:guid}/image")] public async Task<IActionResult> Image(Guid id, CancellationToken ct)
