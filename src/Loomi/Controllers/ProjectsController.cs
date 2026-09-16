@@ -17,7 +17,7 @@ public class ProjectsController(AppDbContext db, ProjectRepository projects, Gen
     [HttpPost] public async Task<IActionResult> Create(CreateProject request, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.Title)) return BadRequest(new { error = "InvalidTitle" });
-        await browser.NewProjectAsync(ct);
+        // Naming a project must not depend on a browser: the account is chosen when the work is dispatched, and it opens its own chat then.
         var project = new ImageProject { UserId = Me.Id, Title = request.Title.Trim() };
         db.Projects.Add(project); await db.SaveChangesAsync(ct);
         return Created($"/api/projects/{project.Id}", new { project.Id, project.Title, project.CreatedAt, project.UpdatedAt, project.Status, project.ConversationUrl });
@@ -41,7 +41,7 @@ public class ProjectsController(AppDbContext db, ProjectRepository projects, Gen
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var project = await db.Projects.OwnedBy(Me).FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new KeyNotFoundException();
-        if (await db.Generations.AnyAsync(g => g.ProjectId == id && g.Status != RunStatus.Completed && g.Status != RunStatus.Failed, ct)) throw new InvalidOperationException("ProjectBusy");
+        if (await db.Generations.AnyAsync(g => g.ProjectId == id && g.Status != RunStatus.Completed && g.Status != RunStatus.Failed && g.Status != RunStatus.Cancelled, ct)) throw new InvalidOperationException("ProjectBusy");
         await db.Generations.Where(g => g.ProjectId == id).ExecuteUpdateAsync(s => s.SetProperty(g => g.ParentGenerationId, (Guid?)null), ct);
         db.Projects.Remove(project); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
         storage.DeleteProject(id); return NoContent();

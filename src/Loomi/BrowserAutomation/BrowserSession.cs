@@ -5,7 +5,8 @@ using Microsoft.Extensions.Options;
 using Microsoft.Playwright;
 namespace Loomi.BrowserAutomation;
 
-public record ConnectionStatus(string State, bool Busy, string? DesktopUrl);
+public record ConnectionStatus(string State, bool Busy, string? DesktopUrl) { /// <summary>Set when work is waiting but no account can take it, so a still queue explains itself instead of looking broken.</summary>
+    public string? Stalled { get; init; } }
 public record BrowserResult(byte[] Image, string ConversationUrl);
 /// <summary>One ChatGPT account's browser: its own profile, page and gate, so two accounts never wait on each other.</summary>
 public sealed class BrowserSession(string directory, IOptions<BrowserOptions> options, IConfiguration config, IChromiumLauncher launcher) : IAsyncDisposable

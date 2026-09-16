@@ -11,7 +11,7 @@ public class GenerationService(AppDbContext db)
         // Serializable SQLite transaction keeps queue admission and deletion consistent.
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var project = await db.Projects.OwnedBy(viewer).FirstOrDefaultAsync(x => x.Id == projectId, ct) ?? throw new KeyNotFoundException();
-        if (await db.Generations.CountAsync(g => g.Status != RunStatus.Completed && g.Status != RunStatus.Failed, ct) >= 25) throw new InvalidOperationException("QueueFull");
+        if (await db.Generations.CountAsync(g => g.Status != RunStatus.Completed && g.Status != RunStatus.Failed && g.Status != RunStatus.Cancelled, ct) >= 25) throw new InvalidOperationException("QueueFull");
         // Refused here rather than silently parked in the queue: a limit is only actionable while the person who hit it is still looking at it.
         if (await db.RemainingAsync(project.UserId, ct) == 0) throw new InvalidOperationException("QuotaExceeded");
         if (parentId != null)

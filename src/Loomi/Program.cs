@@ -52,6 +52,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
 });
 builder.Services.Configure<BrowserOptions>(builder.Configuration.GetSection("Browser"));
 builder.Services.AddSingleton<BrowserPool>();
+builder.Services.AddSingleton<AccountHealth>();
 builder.Services.AddSingleton<BrowserAutomationService>();
 builder.Services.AddSingleton<IChromiumLauncher, ChromiumLauncher>();
 builder.Services.AddSingleton<IImageStorage, ImageStorage>();

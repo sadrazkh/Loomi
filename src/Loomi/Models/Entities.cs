@@ -1,7 +1,8 @@
 namespace Loomi.Models;
 
 public enum Operation { Generate, Edit, Branch }
-public enum RunStatus { Queued, OpeningBrowser, OpeningChatGPT, SendingPrompt, WaitingForResponse, GeneratingImage, DownloadingImage, Completed, Failed }
+// Cancelled is appended: the values are stored as integers, so an existing row must keep the number it was written with.
+public enum RunStatus { Queued, OpeningBrowser, OpeningChatGPT, SendingPrompt, WaitingForResponse, GeneratingImage, DownloadingImage, Completed, Failed, Cancelled }
 public enum UserRole { Owner, Member }
 /// <summary>A person who signs in to Loomi. Distinct from the ChatGPT accounts their work runs on.</summary>
 public class AppUser

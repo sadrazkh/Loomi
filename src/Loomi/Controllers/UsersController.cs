@@ -27,7 +27,7 @@ public class UsersController(AppDbContext db, PasswordService passwords, IImageS
     private async Task<Dictionary<Guid, int>> UsageAsync(CancellationToken ct)
     {
         var midnight = DateTime.Today.ToUniversalTime();
-        return await db.Generations.AsNoTracking().Where(g => g.CreatedAt >= midnight && g.Status != RunStatus.Failed)
+        return await db.Generations.AsNoTracking().Where(g => g.CreatedAt >= midnight && g.Status != RunStatus.Failed && g.Status != RunStatus.Cancelled)
             .GroupBy(g => g.UserId).Select(x => new { x.Key, Used = x.Count() }).ToDictionaryAsync(x => x.Key, x => x.Used, ct);
     }
     private async Task<AppUser> UserAsync(Guid id, CancellationToken ct) => await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct) ?? throw new KeyNotFoundException();
@@ -84,7 +84,7 @@ public class UsersController(AppDbContext db, PasswordService passwords, IImageS
         if (id == Me.Id) return Conflict(new { error = "CannotDeleteSelf" });
         var user = await UserAsync(id, ct);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        if (await db.Generations.AnyAsync(g => g.UserId == id && g.Status != RunStatus.Completed && g.Status != RunStatus.Failed, ct)) return Conflict(new { error = "UserBusy" });
+        if (await db.Generations.AnyAsync(g => g.UserId == id && g.Status != RunStatus.Completed && g.Status != RunStatus.Failed && g.Status != RunStatus.Cancelled, ct)) return Conflict(new { error = "UserBusy" });
         var projects = await db.Projects.Where(p => p.UserId == id).Select(p => p.Id).ToListAsync(ct);
         // A generation of theirs inside somebody else's project is that project's history. Re-home it instead of deleting it, or the other user loses a step.
         foreach (var stray in await db.Generations.Include(g => g.Project).Where(g => g.UserId == id && !projects.Contains(g.ProjectId)).ToListAsync(ct)) stray.UserId = stray.Project.UserId;
