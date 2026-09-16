@@ -28,7 +28,7 @@ public class UserAdminTests
     {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var user = new AppUser { Username = username, NormalizedUsername = username.ToLowerInvariant(), Role = role };
+        var user = new AppUser { Username = username, NormalizedUsername = username.ToLowerInvariant(), Role = role, DailyQuota = 10 };
         user.PasswordHash = scope.ServiceProvider.GetRequiredService<PasswordService>().Hash(user, password);
         db.Users.Add(user); await db.SaveChangesAsync(); return user;
     }

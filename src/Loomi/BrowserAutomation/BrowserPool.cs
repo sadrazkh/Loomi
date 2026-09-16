@@ -8,9 +8,9 @@ public sealed class BrowserPool(IOptions<BrowserOptions> options, IConfiguration
 {
     private readonly ConcurrentDictionary<Guid, BrowserSession> sessions = new();
     // A race can build two sessions, but only the winner is ever handed out and a session launches nothing until it is asked to work.
-    private BrowserSession Session(BrowserAccount account) => sessions.GetOrAdd(account.Id, _ => new BrowserSession(account.ProfileDirectory, options, config, launcher));
-    public Task<T> RunAsync<T>(BrowserAccount account, Func<BrowserSession, Task<T>> work) => work(Session(account));
-    public Task RunAsync(BrowserAccount account, Func<BrowserSession, Task> work) => work(Session(account));
+    private BrowserSession Session(ProviderAccount account) => sessions.GetOrAdd(account.Id, _ => new BrowserSession(account.ProfileDirectory ?? throw new InvalidOperationException("NoProfile"), options, config, launcher));
+    public Task<T> RunAsync<T>(ProviderAccount account, Func<BrowserSession, Task<T>> work) => work(Session(account));
+    public Task RunAsync(ProviderAccount account, Func<BrowserSession, Task> work) => work(Session(account));
     public bool IsBusy(Guid account) => sessions.TryGetValue(account, out var session) && session.Busy;
     public string StateOf(Guid account) => sessions.TryGetValue(account, out var session) ? session.State : "Disconnected";
     public Task<string?> DesktopUrlAsync() => BrowserSession.DesktopUrlAsync(options.Value);

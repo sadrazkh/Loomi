@@ -58,8 +58,8 @@ public class AccountApiTests
         Assert.False(updated.GetProperty("isEnabled").GetBoolean());
         Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync($"/api/auth/accounts/{id}")).StatusCode);
         Assert.Equal(0, (await client.GetFromJsonAsync<JsonElement>("/api/auth/accounts")).GetArrayLength());
-        // Polling the pre-pool status route must not quietly add an account back.
-        Assert.Equal("Disconnected", (await client.GetFromJsonAsync<JsonElement>("/api/auth/status")).GetProperty("state").GetString());
+        // Polling status must not quietly add an account back, and with none left the pool is simply not ready.
+        Assert.False((await client.GetFromJsonAsync<JsonElement>("/api/auth/status")).GetProperty("ready").GetBoolean());
         Assert.Equal(0, (await client.GetFromJsonAsync<JsonElement>("/api/auth/accounts")).GetArrayLength());
     }
 
@@ -90,20 +90,35 @@ public class AccountApiTests
     }
 
     [Fact]
-    public async Task The_single_browser_callers_adopt_the_existing_profile_and_refuse_a_disabled_account()
+    public async Task An_install_with_an_existing_default_profile_has_it_adopted_as_an_account()
     {
+        var root = Path.Combine(Path.GetTempPath(), "loomi-adopt-" + Guid.NewGuid());
+        Directory.CreateDirectory(Path.Combine(root, "profiles", "default"));
         using var connection = new SqliteConnection("Filename=:memory:");
         await connection.OpenAsync();
         await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options);
         await db.Database.EnsureCreatedAsync();
-        var adopted = await BrowserAutomationService.AccountAsync(db, default);
+        await OwnerBootstrap.EnsureAsync(db, new PasswordService(), AppFactory.Key, root);
+        var adopted = await db.Accounts.SingleAsync();
         Assert.Equal("default", adopted.ProfileDirectory);
-        Assert.Equal(adopted.Id, (await BrowserAutomationService.AccountAsync(db, default)).Id);
-        adopted.IsEnabled = false;
-        await db.SaveChangesAsync();
-        Assert.Equal("NoAccount", (await Assert.ThrowsAsync<InvalidOperationException>(() => BrowserAutomationService.AccountAsync(db, default))).Message);
-        db.Accounts.Add(new BrowserAccount { Label = "Second", ProfileDirectory = "second" });
-        await db.SaveChangesAsync();
-        Assert.Equal("second", (await BrowserAutomationService.AccountAsync(db, default)).ProfileDirectory);
+        Assert.Equal(Provider.ChatGPT, adopted.Provider);
+        // A second start adopts nothing more: an account already exists.
+        await OwnerBootstrap.EnsureAsync(db, new PasswordService(), AppFactory.Key, root);
+        Assert.Equal(1, await db.Accounts.CountAsync());
+        Directory.Delete(root, true);
+    }
+
+    [Fact]
+    public async Task A_fresh_install_with_no_profile_folder_adopts_no_account()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "loomi-fresh-" + Guid.NewGuid());
+        Directory.CreateDirectory(root);
+        using var connection = new SqliteConnection("Filename=:memory:");
+        await connection.OpenAsync();
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options);
+        await db.Database.EnsureCreatedAsync();
+        await OwnerBootstrap.EnsureAsync(db, new PasswordService(), AppFactory.Key, root);
+        Assert.Equal(0, await db.Accounts.CountAsync());
+        Directory.Delete(root, true);
     }
 }

@@ -1,42 +1,65 @@
 using System.ComponentModel.DataAnnotations;
-using Loomi.BrowserAutomation;
 using Loomi.Data;
 using Loomi.Models;
+using Loomi.Providers;
 using Loomi.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 namespace Loomi.Controllers;
-public record CreateAccount([Required, StringLength(64, MinimumLength = 1)] string Label);
+public record CreateAccount([Required, StringLength(64, MinimumLength = 1)] string Label, Provider Provider = Provider.ChatGPT);
 public record UpdateAccount([StringLength(64, MinimumLength = 1)] string? Label, [Range(0, 500)] int? DailyCap, bool? IsEnabled);
-public record AccountDto(Guid Id, string Label, int DailyCap, bool IsEnabled, DateTime? LastUsedAt, DateTime CreatedAt, string State, bool Busy, bool SpentToday, string? DesktopUrl)
+public record AccountDto(Guid Id, Provider Provider, AccountKind Kind, string Label, int DailyCap, bool IsEnabled, DateTime? LastUsedAt, DateTime CreatedAt, string State, bool Busy, bool SpentToday, string? DesktopUrl)
 {
-    public static AccountDto From(BrowserAccount a, string state, bool busy, bool spent, string? desktop) => new(a.Id, a.Label, a.DailyCap, a.IsEnabled, a.LastUsedAt, a.CreatedAt, state, busy, spent, desktop);
+    public static AccountDto From(ProviderAccount a, string state, bool busy, bool spent, string? desktop) => new(a.Id, a.Provider, a.Kind, a.Label, a.DailyCap, a.IsEnabled, a.LastUsedAt, a.CreatedAt, state, busy, spent, desktop);
 }
 [ApiController, Authorize, Route("api/auth")]
-public class AuthController(AppDbContext db, BrowserPool pool, BrowserAutomationService browser, AccountHealth health) : ControllerBase
+public class AuthController(AppDbContext db, ProviderRegistry providers, AccountHealth health) : ControllerBase
 {
-    [HttpGet("status")] public async Task<IActionResult> Status() => Ok(await browser.StatusAsync());
-    [Authorize(Roles = nameof(UserRole.Owner)), HttpPost("connect")] public async Task<IActionResult> Connect(CancellationToken ct) => Ok(await browser.ConnectAsync(ct));
-    [Authorize(Roles = nameof(UserRole.Owner)), HttpPost("reset")] public async Task<IActionResult> Reset(CancellationToken ct) { await browser.ResetAsync(ct); return NoContent(); }
-    /// <summary>States come from the sessions already running: probing every account on every poll would drive one browser per row.</summary>
+    /// <summary>The whole pool at a glance: enough for a member to see the workspace can generate, without exposing individual accounts.</summary>
+    [HttpGet("status")] public async Task<IActionResult> Status(CancellationToken ct)
+    {
+        var accounts = await db.Accounts.AsNoTracking().Where(a => a.IsEnabled).ToListAsync(ct);
+        var byProvider = accounts.GroupBy(a => a.Provider).Select(g => new { provider = g.Key.ToString(), accounts = g.Count(), connected = g.Count(a => providers.For(a.Provider).StateOf(a) == "Connected") });
+        return Ok(new { ready = accounts.Any(a => providers.For(a.Provider).StateOf(a) == "Connected"), stalled = await StalledAsync(accounts, ct), desktopUrl = await DesktopAsync(), providers = byProvider });
+    }
+    /// <summary>Why nothing is moving, when something is waiting. Silence here is what makes a parked account look like a broken queue.</summary>
+    private async Task<string?> StalledAsync(List<ProviderAccount> accounts, CancellationToken ct)
+    {
+        if (!await db.Generations.AnyAsync(g => g.Status == RunStatus.Queued, ct)) return null;
+        if (accounts.Count == 0) return "NoAccount";
+        foreach (var a in accounts)
+            if (!health.IsSpent(a.Id) && providers.For(a.Provider).StateOf(a) is not ("LoginRequired" or "VerificationRequired") && await db.UsedOnAsync(a.Id, ct) < a.DailyCap) return null;
+        return "AllAccountsSpent";
+    }
+    private async Task<string?> DesktopAsync()
+    {
+        foreach (var provider in providers.All)
+            if (await provider.DesktopUrlAsync() is { } url) return url;
+        return null;
+    }
     [Authorize(Roles = nameof(UserRole.Owner))] [HttpGet("accounts")] public async Task<IActionResult> Accounts(CancellationToken ct)
     {
-        var desktop = await pool.DesktopUrlAsync();
+        var desktop = await DesktopAsync();
         var accounts = await db.Accounts.AsNoTracking().OrderBy(a => a.CreatedAt).ToListAsync(ct);
-        return Ok(accounts.Select(a => AccountDto.From(a, pool.StateOf(a.Id), pool.IsBusy(a.Id), health.IsSpent(a.Id), desktop)));
+        return Ok(accounts.Select(a => { var p = providers.For(a.Provider); return AccountDto.From(a, p.StateOf(a), p.IsBusy(a), health.IsSpent(a.Id), desktop); }));
     }
     [Authorize(Roles = nameof(UserRole.Owner))] [HttpPost("accounts")] public async Task<IActionResult> Create(CreateAccount request, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.Label)) return BadRequest(new { error = "InvalidLabel" });
+        if (!providers.Has(request.Provider)) return BadRequest(new { error = "NoProvider" });
         // The folder is generated, never taken from the label: it is an identifier, not a name the owner can shape.
-        var account = new BrowserAccount { Label = request.Label.Trim(), ProfileDirectory = "account-" + Guid.NewGuid().ToString("n")[..12] };
+        var account = new ProviderAccount { Provider = request.Provider, Kind = AccountKind.Browser, Label = request.Label.Trim(), ProfileDirectory = "account-" + Guid.NewGuid().ToString("n")[..12] };
         db.Accounts.Add(account); await db.SaveChangesAsync(ct);
-        return Created($"/api/auth/accounts/{account.Id}", AccountDto.From(account, "Disconnected", false, false, await pool.DesktopUrlAsync()));
+        var provider = providers.For(account.Provider);
+        return Created($"/api/auth/accounts/{account.Id}", AccountDto.From(account, provider.StateOf(account), false, false, await provider.DesktopUrlAsync()));
     }
-    [Authorize(Roles = nameof(UserRole.Owner))] [HttpGet("accounts/{id:guid}/status")] public async Task<IActionResult> AccountStatus(Guid id, CancellationToken ct) => Ok(await pool.RunAsync(await AccountAsync(id, ct), session => session.StatusAsync()));
-    [Authorize(Roles = nameof(UserRole.Owner))] [HttpPost("accounts/{id:guid}/connect")] public async Task<IActionResult> ConnectAccount(Guid id, CancellationToken ct) => Ok(await pool.RunAsync(await AccountAsync(id, ct), session => session.ConnectAsync(ct)));
-    [Authorize(Roles = nameof(UserRole.Owner))] [HttpPost("accounts/{id:guid}/reset")] public async Task<IActionResult> ResetAccount(Guid id, CancellationToken ct) { await pool.RunAsync(await AccountAsync(id, ct), session => session.ResetAsync(ct)); return NoContent(); }
+    [Authorize(Roles = nameof(UserRole.Owner))] [HttpGet("accounts/{id:guid}/status")] public async Task<IActionResult> AccountStatus(Guid id, CancellationToken ct)
+    { var a = await AccountAsync(id, ct); return Ok(await providers.For(a.Provider).StatusAsync(a)); }
+    [Authorize(Roles = nameof(UserRole.Owner))] [HttpPost("accounts/{id:guid}/connect")] public async Task<IActionResult> ConnectAccount(Guid id, CancellationToken ct)
+    { var a = await AccountAsync(id, ct); return Ok(await providers.For(a.Provider).ConnectAsync(a, ct)); }
+    [Authorize(Roles = nameof(UserRole.Owner))] [HttpPost("accounts/{id:guid}/reset")] public async Task<IActionResult> ResetAccount(Guid id, CancellationToken ct)
+    { var a = await AccountAsync(id, ct); await providers.For(a.Provider).ResetAsync(a, ct); return NoContent(); }
     [Authorize(Roles = nameof(UserRole.Owner))] [HttpPatch("accounts/{id:guid}")] public async Task<IActionResult> Update(Guid id, UpdateAccount request, CancellationToken ct)
     {
         var account = await AccountAsync(id, ct);
@@ -44,17 +67,19 @@ public class AuthController(AppDbContext db, BrowserPool pool, BrowserAutomation
         if (request.DailyCap is { } cap) account.DailyCap = cap;
         if (request.IsEnabled is { } enabled) account.IsEnabled = enabled;
         await db.SaveChangesAsync(ct);
-        return Ok(AccountDto.From(account, pool.StateOf(id), pool.IsBusy(id), health.IsSpent(id), await pool.DesktopUrlAsync()));
+        var provider = providers.For(account.Provider);
+        return Ok(AccountDto.From(account, provider.StateOf(account), provider.IsBusy(account), health.IsSpent(id), await provider.DesktopUrlAsync()));
     }
     [Authorize(Roles = nameof(UserRole.Owner))] [HttpDelete("accounts/{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var account = await AccountAsync(id, ct);
-        if (pool.IsBusy(id)) throw new InvalidOperationException("BrowserBusy");
+        var provider = providers.For(account.Provider);
+        if (provider.IsBusy(account)) throw new InvalidOperationException("BrowserBusy");
         // The profile holds the login, so removing the row has to take the cookies with it.
-        await pool.RunAsync(account, session => session.ResetAsync(ct));
-        await pool.DiscardAsync(id);
+        await provider.ResetAsync(account, ct);
+        await provider.DiscardAsync(id);
         db.Accounts.Remove(account); await db.SaveChangesAsync(ct);
         return NoContent();
     }
-    private async Task<BrowserAccount> AccountAsync(Guid id, CancellationToken ct) => await db.Accounts.FirstOrDefaultAsync(a => a.Id == id, ct) ?? throw new KeyNotFoundException();
+    private async Task<ProviderAccount> AccountAsync(Guid id, CancellationToken ct) => await db.Accounts.FirstOrDefaultAsync(a => a.Id == id, ct) ?? throw new KeyNotFoundException();
 }

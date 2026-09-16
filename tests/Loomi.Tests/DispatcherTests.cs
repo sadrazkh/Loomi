@@ -86,7 +86,7 @@ public class DispatcherTests
     {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var account = new BrowserAccount { Label = profile, ProfileDirectory = profile, DailyCap = cap, LastUsedAt = lastUsed };
+        var account = new ProviderAccount { Label = profile, ProfileDirectory = profile, DailyCap = cap, LastUsedAt = lastUsed };
         db.Accounts.Add(account); await db.SaveChangesAsync();
         return account.Id;
     }

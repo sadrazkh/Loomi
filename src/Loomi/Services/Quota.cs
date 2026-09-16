@@ -10,8 +10,12 @@ public static class Quota
     /// <summary>A run that failed or was cancelled cost nobody anything, so neither is counted.</summary>
     private static IQueryable<Generation> Today(AppDbContext db) { var since = Midnight(); return db.Generations.AsNoTracking().Where(g => g.CreatedAt >= since && g.Status != RunStatus.Failed && g.Status != RunStatus.Cancelled); }
     public static Task<int> UsedByAsync(this AppDbContext db, Guid user, CancellationToken ct) => Today(db).CountAsync(g => g.UserId == user, ct);
+    /// <summary>Today's usage per user in one query, so the user list does not count row by row.</summary>
+    public static async Task<Dictionary<Guid, int>> UsageAsync(this AppDbContext db, CancellationToken ct) =>
+        await Today(db).GroupBy(g => g.UserId).Select(x => new { x.Key, Count = x.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count, ct);
     public static Task<int> UsedOnAsync(this AppDbContext db, Guid account, CancellationToken ct) => Today(db).CountAsync(g => g.AccountId == account, ct);
-    /// <summary>Null when the row belongs to no user: work that predates users has nobody's day to spend, and only an owner — who has no limit — can reach it.</summary>
+    /// <summary>Null means no daily limit: a missing user, or a quota of zero. A real number is what is left of a positive quota.</summary>
     public static async Task<int?> RemainingAsync(this AppDbContext db, Guid user, CancellationToken ct) =>
-        await db.Users.AsNoTracking().Where(u => u.Id == user).Select(u => (int?)u.DailyQuota).FirstOrDefaultAsync(ct) is { } quota ? Math.Max(0, quota - await db.UsedByAsync(user, ct)) : null;
+        await db.Users.AsNoTracking().Where(u => u.Id == user).Select(u => (int?)u.DailyQuota).FirstOrDefaultAsync(ct) is int quota and > 0
+            ? Math.Max(0, quota - await db.UsedByAsync(user, ct)) : null;
 }

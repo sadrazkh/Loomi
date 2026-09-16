@@ -23,13 +23,7 @@ public class UsersController(AppDbContext db, PasswordService passwords, IImageS
     private const int SqliteUniqueViolation = 2067;
     private Viewer Me => Viewer.From(User);
     private static bool ValidName(string name) => name.Length is >= 3 and <= 64 && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');
-    /// <summary>Spent today = generations since local midnight that did not fail, counted rather than tallied, so a restart cannot drift it.</summary>
-    private async Task<Dictionary<Guid, int>> UsageAsync(CancellationToken ct)
-    {
-        var midnight = DateTime.Today.ToUniversalTime();
-        return await db.Generations.AsNoTracking().Where(g => g.CreatedAt >= midnight && g.Status != RunStatus.Failed && g.Status != RunStatus.Cancelled)
-            .GroupBy(g => g.UserId).Select(x => new { x.Key, Used = x.Count() }).ToDictionaryAsync(x => x.Key, x => x.Used, ct);
-    }
+    private Task<Dictionary<Guid, int>> UsageAsync(CancellationToken ct) => db.UsageAsync(ct);
     private async Task<AppUser> UserAsync(Guid id, CancellationToken ct) => await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct) ?? throw new KeyNotFoundException();
     /// <summary>True while somebody other than this user can still reach the owner-only routes.</summary>
     private Task<bool> AnotherOwnerAsync(Guid id, CancellationToken ct) => db.Users.AnyAsync(u => u.Id != id && u.Role == UserRole.Owner && !u.IsDisabled, ct);

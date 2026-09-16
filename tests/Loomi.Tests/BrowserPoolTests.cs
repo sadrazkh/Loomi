@@ -16,7 +16,7 @@ public class BrowserPoolTests
         options.Headless = true;
         return (new BrowserPool(Options.Create(options), config, launcher), root);
     }
-    private static BrowserAccount Account(string directory) => new() { Label = directory, ProfileDirectory = directory };
+    private static ProviderAccount Account(string directory) => new() { Label = directory, ProfileDirectory = directory };
     private static string Profiles(string root, string directory) => Path.Combine(root, "profiles", directory);
 
     [Theory]
@@ -73,12 +73,12 @@ public class BrowserPoolTests
         using var cancel = new CancellationTokenSource();
         await using (pool)
         {
-            var held = pool.RunAsync(slow, s => s.RunAsync(new Generation { Prompt = "timeout" }, null, null,
-                status => { if (status == RunStatus.WaitingForResponse) sending.TrySetResult(); return Task.CompletedTask; }, cancel.Token));
+            var held = pool.RunAsync(slow, s => s.RunAsync(Operation.Generate, "timeout", null, null,
+                (status, _) => { if (status == RunStatus.WaitingForResponse) sending.TrySetResult(); return Task.CompletedTask; }, cancel.Token));
             await sending.Task.WaitAsync(TimeSpan.FromSeconds(90));
             Assert.True(pool.IsBusy(slow.Id));
             Assert.False(pool.IsBusy(free.Id));
-            var result = await pool.RunAsync(free, s => s.RunAsync(new Generation { Prompt = "quick" }, null, null, _ => Task.CompletedTask, default));
+            var result = await pool.RunAsync(free, s => s.RunAsync(Operation.Generate, "quick", null, null, (_, _) => Task.CompletedTask, default));
             Assert.True(result.Image.Length > 100);
             Assert.False(pool.IsBusy(free.Id));
             await cancel.CancelAsync();

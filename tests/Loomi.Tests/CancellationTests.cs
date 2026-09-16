@@ -125,7 +125,7 @@ public class CancellationTests
         Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/auth/accounts")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync("/api/auth/accounts", new { label = "Theirs" })).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await client.DeleteAsync($"/api/auth/accounts/{Guid.NewGuid()}")).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsync("/api/auth/connect", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsync($"/api/auth/accounts/{Guid.NewGuid()}/connect", null)).StatusCode);
         // Seeing whether the workspace is connected is not managing it.
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/auth/status")).StatusCode);
     }

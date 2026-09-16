@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Loomi.BrowserAutomation;
 using Loomi.Data;
+using Loomi.Providers;
 using Loomi.Repositories;
 using Loomi.Security;
 using Loomi.Services;
@@ -53,7 +54,8 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
 builder.Services.Configure<BrowserOptions>(builder.Configuration.GetSection("Browser"));
 builder.Services.AddSingleton<BrowserPool>();
 builder.Services.AddSingleton<AccountHealth>();
-builder.Services.AddSingleton<BrowserAutomationService>();
+builder.Services.AddSingleton<IImageProvider, ChatGptProvider>();
+builder.Services.AddSingleton<ProviderRegistry>();
 builder.Services.AddSingleton<IChromiumLauncher, ChromiumLauncher>();
 builder.Services.AddSingleton<IImageStorage, ImageStorage>();
 builder.Services.AddSingleton<PasswordService>();
@@ -71,7 +73,7 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await db.Database.MigrateAsync();
     await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
-    await OwnerBootstrap.EnsureAsync(db, scope.ServiceProvider.GetRequiredService<PasswordService>(), accessKey);
+    await OwnerBootstrap.EnsureAsync(db, scope.ServiceProvider.GetRequiredService<PasswordService>(), accessKey, root);
 }
 app.UseForwardedHeaders();
 app.UseWebSockets();

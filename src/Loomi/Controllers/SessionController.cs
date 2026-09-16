@@ -18,7 +18,7 @@ public class SessionController(AppDbContext db, PasswordService passwords, IConf
     {
         var user = User.Identity?.IsAuthenticated == true ? await db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == Viewer.From(User).Id && !x.IsDisabled, ct) : null;
         var used = user == null ? 0 : await db.UsedByAsync(user.Id, ct);
-        return Ok(new { authenticated = user != null, username = user?.Username, role = user?.Role, dailyQuota = user?.DailyQuota, dailyUsed = user == null ? null : (int?)used, dailyRemaining = user == null ? null : (int?)Math.Max(0, user.DailyQuota - used), csrfToken = antiforgery.GetAndStoreTokens(HttpContext).RequestToken, devAccessKey = user == null ? DevelopmentAccess.Hint(environment, config["Security:AccessKey"]) : null });
+        return Ok(new { authenticated = user != null, username = user?.Username, role = user?.Role, dailyQuota = user?.DailyQuota, dailyUsed = user == null ? null : (int?)used, dailyRemaining = user is { DailyQuota: > 0 } ? (int?)Math.Max(0, user.DailyQuota - used) : null, csrfToken = antiforgery.GetAndStoreTokens(HttpContext).RequestToken, devAccessKey = user == null ? DevelopmentAccess.Hint(environment, config["Security:AccessKey"]) : null });
     }
     [HttpPost("login"), EnableRateLimiting("login")]
     public async Task<IActionResult> Login(LoginRequest request, CancellationToken ct)

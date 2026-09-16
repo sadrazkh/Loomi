@@ -65,7 +65,7 @@ public class BrowserTests
             await using var service = new BrowserSession("default", Options.Create(new BrowserOptions { Headless = true, StableSeconds = 1, GenerationTimeoutSeconds = 20 }), config, launcher);
             Assert.Equal("Connected", (await service.ConnectAsync(default)).State);
             var statuses = new List<RunStatus>();
-            var generated = await service.RunAsync(new() { Prompt = "initial" }, null, null, s => { statuses.Add(s); return Task.CompletedTask; }, default);
+            var generated = await service.RunAsync(Operation.Generate, "initial", null, null, (s, _) => { statuses.Add(s); return Task.CompletedTask; }, default);
             Assert.StartsWith("https://chatgpt.com/c/", generated.ConversationUrl);
             Assert.True(generated.Image.Length > 100);
             Assert.Contains(RunStatus.DownloadingImage, statuses);
@@ -73,7 +73,7 @@ public class BrowserTests
             foreach (var operation in new[] { Operation.Edit, Operation.Branch })
             {
                 launcher.Visits.Clear();
-                await service.RunAsync(new() { Operation = operation, Prompt = "change" }, path, generated.ConversationUrl, _ => Task.CompletedTask, default);
+                await service.RunAsync(operation, "change", path, generated.ConversationUrl, (_, _) => Task.CompletedTask, default);
                 Assert.Equal(operation == Operation.Edit ? generated.ConversationUrl : "https://chatgpt.com/", launcher.Visits[0]);
                 Assert.Equal(1, await launcher.Context.Pages[0].EvaluateAsync<int>("window.submission.files"));
                 Assert.Equal("change", await launcher.Context.Pages[0].EvaluateAsync<string>("window.submission.prompt"));
@@ -92,10 +92,10 @@ public class BrowserTests
             await using var launcher = new FixtureLauncher();
             var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?> { ["Storage:Root"] = root }).Build();
             await using var service = new BrowserSession("default", Options.Create(new BrowserOptions { Headless = true, GenerationTimeoutSeconds = 2 }), config, launcher);
-            var generation = new Generation { Prompt = "timeout" };
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RunAsync(generation, null, null, _ => Task.CompletedTask, default));
+            string? conversation = null;
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RunAsync(Operation.Generate, "timeout", null, null, (_, url) => { if (url != null) conversation = url; return Task.CompletedTask; }, default));
             Assert.Equal("GenerationTimeout", ex.Message);
-            Assert.Equal("https://chatgpt.com/c/fixture-conversation", generation.ConversationUrl);
+            Assert.Equal("https://chatgpt.com/c/fixture-conversation", conversation);
             Assert.Equal("timeout", await launcher.Context.Pages[0].EvaluateAsync<string>("window.submission.prompt"));
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }

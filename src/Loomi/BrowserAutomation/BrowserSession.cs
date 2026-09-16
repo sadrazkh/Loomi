@@ -8,6 +8,8 @@ namespace Loomi.BrowserAutomation;
 public record ConnectionStatus(string State, bool Busy, string? DesktopUrl) { /// <summary>Set when work is waiting but no account can take it, so a still queue explains itself instead of looking broken.</summary>
     public string? Stalled { get; init; } }
 public record BrowserResult(byte[] Image, string ConversationUrl);
+/// <summary>Reports progress and, when first seen, the conversation URL, so a run that later fails still leaves the chat on the row.</summary>
+public delegate Task ReportStatus(RunStatus status, string? conversation = null);
 /// <summary>One ChatGPT account's browser: its own profile, page and gate, so two accounts never wait on each other.</summary>
 public sealed class BrowserSession(string directory, IOptions<BrowserOptions> options, IConfiguration config, IChromiumLauncher launcher) : IAsyncDisposable
 {
@@ -53,12 +55,6 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
         catch (Exception e) when (e is SocketException or OperationCanceledException) { return null; }
     }
     private Task<string?> DesktopUrlAsync() => DesktopUrlAsync(settings);
-    public async Task NewProjectAsync(CancellationToken ct)
-    {
-        if (!await gate.WaitAsync(0, ct)) throw new InvalidOperationException("BrowserBusy");
-        try { await EnsureAsync(); await NavigateAsync("https://chatgpt.com/"); }
-        finally { gate.Release(); }
-    }
     public async Task ResetAsync(CancellationToken ct)
     {
         if (!await gate.WaitAsync(0, ct)) throw new InvalidOperationException("BrowserBusy");
@@ -111,7 +107,7 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
         }
         catch (PlaywrightException) { state = "Disconnected"; }
     }
-    public async Task<BrowserResult> RunAsync(Generation generation, string? parentImage, string? conversation, Func<RunStatus, Task> report, CancellationToken ct)
+    public async Task<BrowserResult> RunAsync(Operation operation, string prompt, string? parentImage, string? conversation, ReportStatus report, CancellationToken ct)
     {
         await gate.WaitAsync(ct);
         try
@@ -119,7 +115,7 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             await report(RunStatus.OpeningBrowser);
             await EnsureAsync();
             await report(RunStatus.OpeningChatGPT);
-            await NavigateAsync(generation.Operation == Operation.Edit && conversation != null ? conversation : "https://chatgpt.com/");
+            await NavigateAsync(operation == Operation.Edit && conversation != null ? conversation : "https://chatgpt.com/");
             await page!.Locator(settings.Selectors.Composer).First.WaitForAsync();
             await DetectAsync();
             if (state != "Connected") throw new InvalidOperationException(state == "VerificationRequired" ? "VerificationRequired" : "LoginRequired");
@@ -137,21 +133,21 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             // outside the assistant message element, so scoping the search there finds nothing however new the image is.
             var imagesBefore = await page.Locator(settings.Selectors.GeneratedImage).CountAsync();
             await report(RunStatus.SendingPrompt);
-            await page.Locator(settings.Selectors.Composer).First.FillAsync(generation.Prompt);
+            await page.Locator(settings.Selectors.Composer).First.FillAsync(prompt);
             // Never retry submission: a timeout after clicking may still have accepted the prompt.
             await page.Locator(settings.Selectors.Send).First.ClickAsync();
             await report(RunStatus.WaitingForResponse);
             var deadline = DateTime.UtcNow.AddSeconds(settings.GenerationTimeoutSeconds);
             string? previous = null;
             DateTime? stableSince = null, emptySince = null;
-            bool announced = false;
+            bool announced = false, urlSeen = false;
             while (DateTime.UtcNow < deadline)
             {
                 await Task.Delay(1500, ct);
-                if (generation.ConversationUrl == null && Uri.TryCreate(page.Url, UriKind.Absolute, out var observed) && observed.Host == "chatgpt.com" && observed.AbsolutePath.StartsWith("/c/"))
+                if (!urlSeen && Uri.TryCreate(page.Url, UriKind.Absolute, out var observed) && observed.Host == "chatgpt.com" && observed.AbsolutePath.StartsWith("/c/"))
                 {
-                    generation.ConversationUrl = page.Url;
-                    await report(announced ? RunStatus.GeneratingImage : RunStatus.WaitingForResponse);
+                    urlSeen = true;
+                    await report(announced ? RunStatus.GeneratingImage : RunStatus.WaitingForResponse, page.Url);
                 }
                 var replied = await page.Locator(settings.Selectors.Assistant).CountAsync() > before;
                 var images = page.Locator(settings.Selectors.GeneratedImage);

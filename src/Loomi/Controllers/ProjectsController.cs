@@ -1,4 +1,3 @@
-using Loomi.BrowserAutomation;
 using Loomi.Data;
 using Loomi.DTOs;
 using Loomi.Models;
@@ -10,7 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 namespace Loomi.Controllers;
 [ApiController, Authorize, Route("api/projects")]
-public class ProjectsController(AppDbContext db, ProjectRepository projects, GenerationService generations, BrowserAutomationService browser, IImageStorage storage) : ControllerBase
+public class ProjectsController(AppDbContext db, ProjectRepository projects, GenerationService generations, IImageStorage storage) : ControllerBase
 {
     private Viewer Me => Viewer.From(User);
     [HttpGet] public async Task<IActionResult> List(CancellationToken ct) => Ok(await projects.ListAsync(Me, ct));
@@ -34,7 +33,7 @@ public class ProjectsController(AppDbContext db, ProjectRepository projects, Gen
     }
     [HttpPost("{id:guid}/generate")] public async Task<IActionResult> Generate(Guid id, PromptRequest request, CancellationToken ct)
     {
-        var g = await generations.SubmitAsync(Me, id, request.Prompt, Operation.Generate, null, ct);
+        var g = await generations.SubmitAsync(Me, id, request.Prompt, Provider.ChatGPT, Operation.Generate, null, ct);
         return Accepted($"/api/generations/{g.Id}", GenerationDto.From(g));
     }
     [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct)

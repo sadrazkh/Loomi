@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Loomi.Services;
 public class GenerationService(AppDbContext db)
 {
-    public async Task<Generation> SubmitAsync(Viewer viewer, Guid projectId, string prompt, Operation operation, Guid? parentId, CancellationToken ct)
+    public async Task<Generation> SubmitAsync(Viewer viewer, Guid projectId, string prompt, Provider provider, Operation operation, Guid? parentId, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(prompt) || prompt.Length > 12000) throw new InvalidOperationException("InvalidPrompt");
         // Serializable SQLite transaction keeps queue admission and deletion consistent.
@@ -20,7 +20,7 @@ public class GenerationService(AppDbContext db)
             if (parent == null || parent.ProjectId != projectId || parent.Status != RunStatus.Completed || parent.LocalImagePath == null) throw new InvalidOperationException("InvalidParent");
         }
         // The project's user, not the actor: an owner helping out must not spend their own quota or take the work over.
-        var generation = new Generation { ProjectId = projectId, UserId = project.UserId, Prompt = prompt.Trim(), Operation = operation, ParentGenerationId = parentId };
+        var generation = new Generation { ProjectId = projectId, UserId = project.UserId, Provider = provider, Prompt = prompt.Trim(), Operation = operation, ParentGenerationId = parentId };
         db.Generations.Add(generation);
         project.UpdatedAt = DateTime.UtcNow; project.Status = "Queued";
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);

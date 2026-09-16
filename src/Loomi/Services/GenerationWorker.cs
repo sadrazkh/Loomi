@@ -3,13 +3,14 @@ using Loomi.BrowserAutomation;
 using Loomi.Data;
 using Loomi.DTOs;
 using Loomi.Models;
+using Loomi.Providers;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 namespace Loomi.Services;
-/// <summary>Spreads the queue over the usable ChatGPT accounts: one run per account at a time, each row claimed in the database so two accounts can never take the same work.</summary>
-public class GenerationWorker(IServiceScopeFactory scopes, BrowserPool pool, IImageStorage storage, IHubContext<StatusHub> hub, AccountHealth health, ILogger<GenerationWorker> logger) : BackgroundService
+/// <summary>Spreads the queue over the usable accounts: one run per account at a time, each row given to an account of its own provider and claimed in the database so two accounts can never take the same work.</summary>
+public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry providers, IImageStorage storage, IHubContext<StatusHub> hub, AccountHealth health, ILogger<GenerationWorker> logger) : BackgroundService
 {
-    private static readonly string[] Reportable = ["LoginRequired", "VerificationRequired", "GenerationTimeout", "InvalidImage", "ConversationNotSaved", "NoAccount", "NoImageReturned", "QuotaExceeded"];
+    private static readonly string[] Reportable = ["LoginRequired", "VerificationRequired", "GenerationTimeout", "InvalidImage", "ConversationNotSaved", "NoAccount", "NoImageReturned", "QuotaExceeded", "ContentBlocked"];
     /// <summary>Only the dispatch loop touches this, so the count of runs in flight never needs a lock.</summary>
     private readonly Dictionary<Guid, Task> running = [];
     /// <summary>Runs in flight, so a cancel can reach one that has already left the queue.</summary>
@@ -68,8 +69,11 @@ public class GenerationWorker(IServiceScopeFactory scopes, BrowserPool pool, IIm
         foreach (var account in await db.Accounts.Where(a => a.IsEnabled).OrderBy(a => a.LastUsedAt).ToListAsync(ct))
         {
             if (queue.Count == 0) break;
-            if (running.ContainsKey(account.Id) || pool.IsBusy(account.Id) || !await UsableAsync(db, account, ct)) continue;
-            var generation = queue[0]; queue.RemoveAt(0);
+            if (running.ContainsKey(account.Id) || providers.For(account.Provider).IsBusy(account) || !await UsableAsync(db, account, ct)) continue;
+            // An account only takes work meant for its own provider; a ChatGPT browser cannot fulfil a Gemini request.
+            var index = queue.FindIndex(q => q.Provider == account.Provider);
+            if (index < 0) continue;
+            var generation = queue[index].Id; queue.RemoveAt(index);
             if (!await ClaimAsync(db, generation, account.Id, ct)) continue;
             account.LastUsedAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
@@ -79,9 +83,9 @@ public class GenerationWorker(IServiceScopeFactory scopes, BrowserPool pool, IIm
         return started;
     }
     /// <summary>The queue in service order, without the rows whose owner has already spent their day.</summary>
-    private static async Task<List<Guid>> QueueAsync(AppDbContext db, CancellationToken ct)
+    private static async Task<List<(Guid Id, Provider Provider)>> QueueAsync(AppDbContext db, CancellationToken ct)
     {
-        var queued = await db.Generations.AsNoTracking().Where(g => g.Status == RunStatus.Queued).OrderBy(g => g.CreatedAt).Select(g => new { g.Id, g.UserId }).ToListAsync(ct);
+        var queued = await db.Generations.AsNoTracking().Where(g => g.Status == RunStatus.Queued).OrderBy(g => g.CreatedAt).Select(g => new { g.Id, g.UserId, g.Provider }).ToListAsync(ct);
         if (queued.Count == 0) return [];
         var owners = queued.Select(g => g.UserId).Distinct().ToList();
         var since = Quota.Midnight();
@@ -89,14 +93,18 @@ public class GenerationWorker(IServiceScopeFactory scopes, BrowserPool pool, IIm
         var used = await db.Generations.AsNoTracking().Where(g => owners.Contains(g.UserId) && g.CreatedAt >= since && g.Status != RunStatus.Failed && g.Status != RunStatus.Cancelled && g.Status != RunStatus.Queued)
             .GroupBy(g => g.UserId).Select(x => new { User = x.Key, Count = x.Count() }).ToDictionaryAsync(x => x.User, x => x.Count, ct);
         var quotas = await db.Users.AsNoTracking().Where(u => owners.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DailyQuota, ct);
-        return queued.Where(g => !quotas.TryGetValue(g.UserId, out var quota) || used.GetValueOrDefault(g.UserId) < quota).Select(g => g.Id).ToList();
+        return queued.Where(g => !Limited(quotas, used, g.UserId)).Select(g => (g.Id, g.Provider)).ToList();
     }
+    /// <summary>A daily quota of zero is no limit at all; a positive one is spent against today's non-failed work.</summary>
+    private static bool Limited(Dictionary<Guid, int> quotas, Dictionary<Guid, int> used, Guid user) =>
+        quotas.TryGetValue(user, out var quota) && quota > 0 && used.GetValueOrDefault(user) >= quota;
     /// <summary>A state only a person can clear parks the account; anything else is attempted, so a restart does not strand the queue waiting for someone to press Connect.</summary>
-    private async Task<bool> UsableAsync(AppDbContext db, BrowserAccount account, CancellationToken ct) =>
-        !health.IsSpent(account.Id) && pool.StateOf(account.Id) is not ("LoginRequired" or "VerificationRequired") && await db.UsedOnAsync(account.Id, ct) < account.DailyCap;
-    private async Task<bool> ElsewhereAsync(AppDbContext db, Guid used, CancellationToken ct)
+    private async Task<bool> UsableAsync(AppDbContext db, ProviderAccount account, CancellationToken ct) =>
+        !health.IsSpent(account.Id) && providers.For(account.Provider).StateOf(account) is not ("LoginRequired" or "VerificationRequired") && await db.UsedOnAsync(account.Id, ct) < account.DailyCap;
+    private async Task<bool> ElsewhereAsync(AppDbContext db, ProviderAccount used, CancellationToken ct)
     {
-        foreach (var account in await db.Accounts.AsNoTracking().Where(a => a.IsEnabled && a.Id != used).ToListAsync(ct))
+        // Only the same provider: the parent conversation and the retry both belong to that provider's world.
+        foreach (var account in await db.Accounts.AsNoTracking().Where(a => a.IsEnabled && a.Id != used.Id && a.Provider == used.Provider).ToListAsync(ct))
             if (await UsableAsync(db, account, ct)) return true;
         return false;
     }
@@ -111,29 +119,33 @@ public class GenerationWorker(IServiceScopeFactory scopes, BrowserPool pool, IIm
         {
             var account = await db.Accounts.FirstAsync(a => a.Id == accountId, ct);
             var g = await db.Generations.Include(x => x.Project).FirstAsync(x => x.Id == generationId, ct);
-            async Task Report(RunStatus status)
+            async Task Report(RunStatus status, string? conversation = null)
             {
                 g.Status = status; g.Project.Status = status.ToString(); g.Project.UpdatedAt = DateTime.UtcNow;
+                // Recorded the moment the chat exists, so a run that later times out still points the owner at the conversation.
+                if (conversation != null) { g.ConversationUrl = conversation; g.Project.ConversationUrl = conversation; }
                 await db.SaveChangesAsync(ct);
                 try { await NotifyAsync(hub, g, ct); } catch (OperationCanceledException) { throw; } catch { /* polling repairs missed notifications */ }
             }
             try
             {
                 Generation? parent = g.ParentGenerationId == null ? null : await db.Generations.FindAsync([g.ParentGenerationId.Value], ct);
-                var result = await pool.RunAsync(account, session => session.RunAsync(g, parent?.LocalImagePath is { } path ? storage.Resolve(path) : null, parent?.ConversationUrl, Report, ct));
+                var inputs = parent?.LocalImagePath is { } path ? new[] { storage.Resolve(path) } : [];
+                var request = new GenerationRequest(account.Provider, g.Operation, g.Prompt, inputs, parent?.ConversationUrl);
+                var result = await providers.For(account.Provider).RunAsync(account, request, Report, ct);
                 g.LocalImagePath = await storage.SaveAsync(g.ProjectId, g.Id, result.Image, ct);
                 g.ConversationUrl = result.ConversationUrl; g.Project.ConversationUrl = result.ConversationUrl;
                 await Report(RunStatus.Completed);
             }
             // A cancelled run is a decision, not a fault, and the row has to say so or it looks like the queue ate it.
-            catch (OperationCanceledException) when (cancel.IsCancellationRequested && !stopping.IsCancellationRequested) { await FinishAsync(db, generationId, RunStatus.Cancelled, hub); return; }
+            catch (OperationCanceledException) when (cancel.IsCancellationRequested && !stopping.IsCancellationRequested) { await FinishAsync(generationId, RunStatus.Cancelled); return; }
             catch (OperationCanceledException) when (stopping.IsCancellationRequested) { return; }
             catch (Exception ex)
             {
                 // Do not log browser exception text: it can contain URLs, page content or tokens.
                 logger.LogWarning("Generation {GenerationId} failed ({Type})", g.Id, ex.GetType().Name);
                 var code = ErrorCodeFor(ex);
-                if (code != "NoImageReturned" || !await MoveOnAsync(db, g, accountId, Report, ct)) { g.ErrorMessage = code; await Report(RunStatus.Failed); }
+                if (code != "NoImageReturned" || !await MoveOnAsync(db, g, account, Report, ct)) { g.ErrorMessage = code; await Report(RunStatus.Failed); }
             }
             g.Project.Status = await db.Generations.AnyAsync(x => x.ProjectId == g.ProjectId && x.Status == RunStatus.Queued, ct) ? "Queued" : "Ready";
             await db.SaveChangesAsync(ct);
@@ -141,7 +153,7 @@ public class GenerationWorker(IServiceScopeFactory scopes, BrowserPool pool, IIm
         finally { InFlight.TryRemove(generationId, out _); }
     }
     /// <summary>Writes an outcome on a fresh context: the run's own context may be mid-cancellation and refuse to save.</summary>
-    private async Task FinishAsync(AppDbContext _, Guid generationId, RunStatus status, IHubContext<StatusHub> notify)
+    private async Task FinishAsync(Guid generationId, RunStatus status)
     {
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -150,13 +162,13 @@ public class GenerationWorker(IServiceScopeFactory scopes, BrowserPool pool, IIm
         g.Status = status;
         g.Project.Status = await db.Generations.AnyAsync(x => x.ProjectId == g.ProjectId && x.Status == RunStatus.Queued) ? "Queued" : "Ready";
         await db.SaveChangesAsync();
-        try { await NotifyAsync(notify, g, CancellationToken.None); } catch { /* polling repairs missed notifications */ }
+        try { await NotifyAsync(hub, g, CancellationToken.None); } catch { /* polling repairs missed notifications */ }
     }
     /// <summary>A reply without an image is this account's image allowance running out, not a broken run. The prompt was answered, so it can never be sent into
     /// that conversation again; a fresh conversation on a different account is the one retry that cannot double up, and without one the user is told why.</summary>
-    private async Task<bool> MoveOnAsync(AppDbContext db, Generation g, Guid account, Func<RunStatus, Task> report, CancellationToken ct)
+    private async Task<bool> MoveOnAsync(AppDbContext db, Generation g, ProviderAccount account, ReportStatus report, CancellationToken ct)
     {
-        health.MarkSpent(account);
+        health.MarkSpent(account.Id);
         if (!await ElsewhereAsync(db, account, ct)) return false;
         g.AccountId = null; g.ErrorMessage = null; g.ConversationUrl = null;
         // The conversation belongs to the account that ran out, so an edit cannot continue it: the retry keeps the parent image but opens a thread of its own.

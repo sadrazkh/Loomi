@@ -49,7 +49,7 @@ public class IntegrationTests
         await Authenticate(client);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/projects")).StatusCode);
         client.DefaultRequestHeaders.Remove("X-CSRF-TOKEN");
-        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync("/api/auth/reset", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync("/api/auth/accounts", null)).StatusCode);
     }
     [Fact]
     public async Task Queue_preserves_lineage_and_rejects_deletion_until_finished()

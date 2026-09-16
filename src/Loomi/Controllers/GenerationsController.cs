@@ -19,7 +19,7 @@ public class GenerationsController(AppDbContext db, GenerationService service, I
     private async Task<IActionResult> Submit(Guid id, PromptRequest r, Operation operation, CancellationToken ct)
     {
         var parent = await MineAsync(id, ct);
-        var g = await service.SubmitAsync(Me, parent.ProjectId, r.Prompt, operation, id, ct);
+        var g = await service.SubmitAsync(Me, parent.ProjectId, r.Prompt, parent.Provider, operation, id, ct);
         return Accepted($"/api/generations/{g.Id}", GenerationDto.From(g));
     }
     /// <summary>Everything not finished. An owner sees the whole queue; everyone else only their own, so cancelling cannot reach across users.</summary>
