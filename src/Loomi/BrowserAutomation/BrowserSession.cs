@@ -133,6 +133,9 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
                 await page.Locator(settings.Selectors.UploadBusy).First.WaitForAsync(new() { State = WaitForSelectorState.Hidden, Timeout = 60000 });
             }
             var before = await page.Locator(settings.Selectors.Assistant).CountAsync();
+            // Counted across the page, not inside the reply: the site renders a generated image in the conversation turn,
+            // outside the assistant message element, so scoping the search there finds nothing however new the image is.
+            var imagesBefore = await page.Locator(settings.Selectors.GeneratedImage).CountAsync();
             await report(RunStatus.SendingPrompt);
             await page.Locator(settings.Selectors.Composer).First.FillAsync(generation.Prompt);
             // Never retry submission: a timeout after clicking may still have accepted the prompt.
@@ -150,15 +153,14 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
                     generation.ConversationUrl = page.Url;
                     await report(announced ? RunStatus.GeneratingImage : RunStatus.WaitingForResponse);
                 }
-                var replies = page.Locator(settings.Selectors.Assistant);
-                if (await replies.CountAsync() <= before) continue;
-                var latest = replies.Last;
-                var image = latest.Locator(settings.Selectors.GeneratedImage).Last;
-                if (await image.CountAsync() == 0 || !await image.IsVisibleAsync())
+                var replied = await page.Locator(settings.Selectors.Assistant).CountAsync() > before;
+                var images = page.Locator(settings.Selectors.GeneratedImage);
+                var image = images.Last;
+                if (await images.CountAsync() <= imagesBefore || !await image.IsVisibleAsync())
                 {
-                    // A reply that has finished and carries no image is an answer, not a delay: an account limit,
+                    // A reply that has finished and brought no new image is an answer, not a delay: an account limit,
                     // a refusal, or plain text. Waiting out the timeout tells the caller nothing it can act on.
-                    if (await page.Locator(settings.Selectors.Stop).First.IsVisibleAsync()) { emptySince = null; continue; }
+                    if (!replied || await page.Locator(settings.Selectors.Stop).First.IsVisibleAsync()) { emptySince = null; continue; }
                     emptySince ??= DateTime.UtcNow;
                     if ((DateTime.UtcNow - emptySince.Value).TotalSeconds < settings.StableSeconds) continue;
                     throw new InvalidOperationException("NoImageReturned");
