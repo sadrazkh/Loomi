@@ -40,6 +40,8 @@
 
 ## فاز ۰ — پاک‌سازی ساختار و schema نهایی
 
+**وضعیت: انجام شد (commit `52e5c7c`).** ۸۲ تست سبز، migration `ProvidersCreditsInputs` روی دیتابیس واقعی اعمال و حساب `default` موجود به‌عنوان حساب ChatGPT پذیرفته شد. دو انحراف کوچک از متن اصلی: (۱) جدول `Accounts` نامش عوض نشد (فقط نوع CLR به `ProviderAccount`)، پس هیچ rename فیزیکی و ریسک SQLite در کار نبود. (۲) کاربر owner همچنان `DailyQuota = int.MaxValue` دارد نه `0`؛ چون `0 = بدون سقف` تازه معنا یافته، در فاز ۱ می‌توان owner را به `0` تمیزتر برد. جدول‌های `Uploads/GenerationInputs/CreditEntries/PricingRules/ApiTokens/TelegramLinks/LinkCodes` ساخته شده‌اند ولی هنوز رفتاری ندارند.
+
 **سختی: سخت.** پایه همه فازهای بعدی است؛ اشتباه اینجا در همه‌جا تکثیر می‌شود.
 
 ### هدف
