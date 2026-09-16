@@ -90,6 +90,13 @@ public class UsersController(AppDbContext db, PasswordService passwords, IImageS
         await db.SaveChangesAsync(ct);
         return Ok(new { balance = await db.BalanceAsync(id, ct) });
     }
+    [SessionOnly, HttpGet("{id:guid}/tokens")] public async Task<IActionResult> Tokens(Guid id, CancellationToken ct)
+    {
+        await UserAsync(id, ct);
+        return Ok(await TokensController.ListAsync(db, id, ct));
+    }
+    [SessionOnly, HttpDelete("{id:guid}/tokens/{tokenId:guid}")] public async Task<IActionResult> RevokeToken(Guid id, Guid tokenId, CancellationToken ct) =>
+        await TokensController.RevokeAsync(db, id, tokenId, ct) ? NoContent() : throw new KeyNotFoundException();
     /// <summary>A project is the unit of ownership: what sits inside one goes with it, and nothing outside one is touched.</summary>
     [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
@@ -105,6 +112,8 @@ public class UsersController(AppDbContext db, PasswordService passwords, IImageS
         // ParentGenerationId is Restrict, so every reference into the doomed rows has to go first, including one from a project that survives.
         await db.Generations.Where(g => g.ParentGenerationId != null && doomed.Contains(g.ParentGenerationId!.Value)).ExecuteUpdateAsync(s => s.SetProperty(g => g.ParentGenerationId, (Guid?)null), ct);
         await db.Projects.Where(p => p.UserId == id).ExecuteDeleteAsync(ct);
+        // Tokens have no foreign key to the user; without this they would sit unreachable for ever.
+        await db.ApiTokens.Where(t => t.UserId == id).ExecuteDeleteAsync(ct);
         db.Users.Remove(user); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
         foreach (var project in projects) storage.DeleteProject(project);
         return NoContent();

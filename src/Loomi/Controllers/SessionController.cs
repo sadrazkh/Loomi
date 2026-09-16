@@ -35,5 +35,5 @@ public class SessionController(AppDbContext db, PasswordService passwords, IConf
         return Ok(new { authenticated = true, user.Username, user.Role, user.DailyQuota });
     }
     [Authorize, HttpPost("logout")]
-    public async Task<IActionResult> Logout() { await HttpContext.SignOutAsync(); return NoContent(); }
+    public async Task<IActionResult> Logout() { await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme); return NoContent(); }
 }

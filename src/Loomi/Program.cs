@@ -3,12 +3,16 @@ using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Loomi.BrowserAutomation;
 using Loomi.Data;
+using Loomi.Models;
 using Loomi.Providers;
 using Loomi.Repositories;
 using Loomi.Security;
 using Loomi.Services;
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.OpenApi;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -28,7 +32,7 @@ if (accessKey == DevelopmentAccess.Key && !builder.Environment.IsDevelopment())
     throw new InvalidOperationException("The built-in development access key cannot be used outside the Development environment. Set Security__AccessKey to a random secret of at least 32 characters.");
 builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(root, "keys"))).SetApplicationName("Loomi");
 builder.Services.AddDbContext<AppDbContext>(o => o.UseSqlite($"Data Source={Path.Combine(root, "loomi.db")};Foreign Keys=True;Default Timeout=30"));
-builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o =>
+builder.Services.AddAuthentication(ApiTokens.Selector).AddCookie(o =>
 {
     o.Cookie.Name = "Loomi.Session"; o.Cookie.HttpOnly = true; o.Cookie.SameSite = SameSiteMode.Strict;
     o.Cookie.SecurePolicy = builder.Environment.IsDevelopment() ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
@@ -36,15 +40,30 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     o.Events.OnValidatePrincipal = SessionValidation.RejectStalePrincipalAsync;
     o.Events.OnRedirectToLogin = c => { c.Response.StatusCode = 401; return Task.CompletedTask; };
     o.Events.OnRedirectToAccessDenied = c => { c.Response.StatusCode = 403; return Task.CompletedTask; };
-});
+})
+.AddScheme<AuthenticationSchemeOptions, TokenAuthenticationHandler>(ApiTokens.Scheme, null)
+// A request that presents a bearer header goes through the token door only. It never falls back to a cookie it may also carry, which is what makes skipping CSRF for tokens safe.
+.AddPolicyScheme(ApiTokens.Selector, null, o => o.ForwardDefaultSelector = c => ApiTokens.IsBearer(c.Request) ? ApiTokens.Scheme : CookieAuthenticationDefaults.AuthenticationScheme);
 builder.Services.AddAuthorization();
 builder.Services.AddAntiforgery(o => { o.HeaderName = "X-CSRF-TOKEN"; o.Cookie.SameSite = SameSiteMode.Strict; });
 builder.Services.AddControllers().AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddSignalR().AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddOpenApi(o => o.AddDocumentTransformer((document, _, _) =>
+{
+    document.Components ??= new();
+    document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+    document.Components.SecuritySchemes["Bearer"] = new OpenApiSecurityScheme { Type = SecuritySchemeType.Http, Scheme = "bearer", Description = "A personal access token from Settings, sent as Authorization: Bearer lm_..." };
+    return Task.CompletedTask;
+}));
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = 429;
+    o.OnRejected = async (c, ct) => { c.HttpContext.Response.Headers.RetryAfter = "60"; await c.HttpContext.Response.WriteAsJsonAsync(new { error = "RateLimited" }, ct); };
     o.AddPolicy("login", c => RateLimitPartition.GetFixedWindowLimiter(c.Connection.RemoteIpAddress?.ToString() ?? "local", _ => new() { PermitLimit = 6, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    // Sixty calls a minute per token, keyed on the prefix so two tokens of one user do not share a window. A cookie session is not metered here.
+    o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(c => c.User.FindFirst(ApiTokens.PrefixClaim)?.Value is { } prefix
+        ? RateLimitPartition.GetFixedWindowLimiter("token:" + prefix, _ => new() { PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 })
+        : RateLimitPartition.GetNoLimiter("session"));
 });
 builder.Services.Configure<ForwardedHeadersOptions>(o =>
 {
@@ -100,7 +119,8 @@ app.UseAuthorization();
 app.UseRateLimiter();
 app.Use(async (ctx, next) =>
 {
-    if (ctx.Request.Path.StartsWithSegments("/api") && !HttpMethods.IsGet(ctx.Request.Method) && !HttpMethods.IsHead(ctx.Request.Method))
+    // A token caller is exempt: a browser cannot attach an Authorization header cross-site without a CORS preflight, and nothing here answers one.
+    if (ctx.Request.Path.StartsWithSegments("/api") && !HttpMethods.IsGet(ctx.Request.Method) && !HttpMethods.IsHead(ctx.Request.Method) && !ApiTokens.IsToken(ctx.User))
     {
         try { await ctx.RequestServices.GetRequiredService<IAntiforgery>().ValidateRequestAsync(ctx); }
         catch (AntiforgeryValidationException) { ctx.Response.StatusCode = 400; await ctx.Response.WriteAsJsonAsync(new { error = "InvalidCsrf" }); return; }
@@ -108,6 +128,9 @@ app.Use(async (ctx, next) =>
     await next();
 });
 app.MapControllers();
+// The document lists every route, the owner's included; outside Development only the owner may read it.
+var openApi = app.MapOpenApi();
+if (!app.Environment.IsDevelopment()) openApi.RequireAuthorization(new AuthorizeAttribute { Roles = nameof(UserRole.Owner) });
 app.MapHub<StatusHub>("/hubs/status").RequireAuthorization();
 app.MapReverseProxy().RequireAuthorization();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
