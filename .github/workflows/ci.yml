@@ -3,6 +3,7 @@ on: [push, pull_request]
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -17,8 +18,49 @@ jobs:
       - run: npm run build --prefix src/Loomi/Client
       - run: dotnet restore --configfile NuGet.Config
       - run: dotnet build --no-restore
-      - run: pwsh src/Loomi/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium
-      - run: dotnet test --no-build
+      # Everything below this line that reads the build with --no-build must stay right after the build
+      # step, before anything else runs. dotnet-ef trusts whatever assembly is already on disk; a check
+      # that runs after a later rebuild, or after a step that edits source, would silently report the old
+      # model instead of today's (the project has hit this class of stale-assembly trap before).
       - run: dotnet tool restore --configfile NuGet.Config
       - run: dotnet ef migrations has-pending-model-changes --project src/Loomi --no-build
+      - run: pwsh src/Loomi/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium
+      - run: dotnet test --no-build
       - run: docker build -t loomi:ci .
+      - name: Boot the built image and probe /health and noVNC
+        # A build that succeeds proves nothing about a container that actually starts: this project once
+        # shipped a Dockerfile that built cleanly but served 502 on /desktop/ at runtime. Start the real
+        # image, hit /health from inside the container, and confirm websockify (noVNC, port 6080) is
+        # listening. Everything is time-boxed so a hung container fails the job instead of hanging it.
+        run: |
+          set -uo pipefail
+          docker run -d --name loomi-ci --shm-size=1gb \
+            -e ASPNETCORE_ENVIRONMENT=Production \
+            -e Security__AccessKey="$(openssl rand -hex 32)" \
+            -e AllowedHosts="localhost;127.0.0.1" \
+            loomi:ci
+          trap 'docker rm -f loomi-ci >/dev/null 2>&1 || true' EXIT
+
+          healthy=
+          for i in $(seq 1 30); do
+            if docker exec loomi-ci curl -fsS --max-time 3 http://127.0.0.1:8080/health >/dev/null 2>&1; then
+              healthy=1
+              break
+            fi
+            sleep 2
+          done
+          if [ -z "$healthy" ]; then
+            echo "::error::/health never answered inside the container after 60s"
+            docker logs loomi-ci
+            exit 1
+          fi
+
+          # Any HTTP response (even a 404) proves websockify is listening; -f would wrongly fail on a
+          # non-2xx body, so it is deliberately left off here.
+          if ! docker exec loomi-ci curl -sS -o /dev/null --max-time 3 http://127.0.0.1:6080/; then
+            echo "::error::noVNC (port 6080) is not listening inside the container"
+            docker logs loomi-ci
+            exit 1
+          fi
+
+          echo "Container answered /health and noVNC (6080) is listening."

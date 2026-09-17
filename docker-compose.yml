@@ -3,7 +3,10 @@ services:
     build: .
     init: true
     restart: unless-stopped
-    shm_size: 1gb
+    # Each connected account is its own Chromium (~500MB) on the shared :99 display. 2gb covers a
+    # handful of accounts running at once; see the sizing table in README.md and raise LOOMI_SHM_SIZE
+    # in .env if you run more.
+    shm_size: ${LOOMI_SHM_SIZE:-2gb}
     ports:
       - "127.0.0.1:5080:8080"
     environment:
@@ -12,6 +15,12 @@ services:
       Security__KnownProxies__0: ${LOOMI_PROXY_IP:-172.17.0.1}
       ASPNETCORE_ENVIRONMENT: Production
       Storage__Root: /data
+      # Optional (Phase 4). Uncomment and set TELEGRAM_BOT_TOKEN in .env to enable the bot; the app
+      # stays silent about it when unset.
+      # Telegram__BotToken: ${TELEGRAM_BOT_TOKEN}
+      # Optional (Phase 5). Left commented out on purpose: Phase 5 fills in the supported model name
+      # from Google's current documentation. Uncomment and set GEMINI_MODEL in .env once it does.
+      # Gemini__Model: ${GEMINI_MODEL}
     volumes:
       - database:/data
       - browser-profiles:/data/profiles
