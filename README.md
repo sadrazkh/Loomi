@@ -79,7 +79,9 @@ docker compose logs --tail=100 loomi
 
 پورت برنامه فقط روی `127.0.0.1:5080` میزبان منتشر می‌شود. `deploy/nginx.conf` نمونه reverse proxy با HTTPS و WebSocket است. دامنه و مسیر گواهی را عوض کنید. **Production به HTTPS نیاز دارد** چون کوکی نشست Secure است. برای آزمایش صرفاً محلی HTTP، محیط را موقتاً Development کنید؛ این حالت را روی اینترنت قرار ندهید.
 
-`LOOMI_PROXY_IP` باید IP واقعی proxy باشد که برنامه می‌بیند؛ مقدار نمونه را بررسی کنید، خصوصاً چون gateway شبکه Compose ممکن است با bridge پیش‌فرض متفاوت باشد. فقط proxy مورد اعتماد باید بتواند `X-Forwarded-Proto` و `X-Forwarded-For` معتبر ارسال کند. `AllowedHosts` را به دامنه واقعی محدود کنید.
+توکن API (`Authorization: Bearer lm_...`، فاز ۲) هم یک اعتبارنامه است، دقیقاً مثل رمز عبور: هرکس آن را در ترافیک ببیند می‌تواند تا وقتی باطل شود جای شما درخواست بزند. آن را فقط روی همین دامنه‌ی HTTPS پشت پراکسی استفاده کنید، هیچ‌وقت روی HTTP ساده یا از دامنه دیگر. جزئیات کامل API برای integrator در `docs/API.md` است.
+
+`LOOMI_PROXY_IP` باید IP واقعی proxy باشد که برنامه می‌بیند؛ مقدار نمونه را بررسی کنید، خصوصاً چون gateway شبکه Compose ممکن است با bridge پیش‌فرض متفاوت باشد. فقط proxy مورد اعتماد باید بتواند `X-Forwarded-Proto` و `X-Forwarded-For` معتبر ارسال کند — این دقیقاً همان دو هدری است که `deploy/nginx.conf` با `proxy_set_header` می‌فرستد و `Security:KnownProxies` در `Program.cs` (`ForwardedHeadersOptions`) از `LOOMI_PROXY_IP` می‌خواند؛ اگر پراکسی دیگری استفاده می‌کنید باید همین دو هدر را با مقدار درست ست کند وگرنه برنامه IP و پروتکل واقعی کاربر را نمی‌بیند (کوکی Secure و rate limit بر همین متکی‌اند). `AllowedHosts` را به دامنه واقعی محدود کنید.
 
 پورت‌های 5900 و 6080 فقط روی loopback **داخل کانتینر** فعال‌اند و نباید منتشر شوند. مرورگر از مسیر احراز هویت‌شده `/desktop/` در همان دامنه ارائه می‌شود؛ WebSocket آن هم به نشست Loomi و Origin همان سایت نیاز دارد. Cookie برنامه هنگام proxy شدن به noVNC حذف می‌شود.
 
@@ -87,11 +89,58 @@ Volumeها:
 
 | Volume | مسیر | محتوا |
 |---|---|---|
-| database | `/data` | `loomi.db`، فایل‌های WAL و کلیدهای Data Protection |
-| browser-profiles | `/data/profiles` | پروفایل Chromium و نشست ChatGPT |
-| images | `/data/images` | `projects/{projectId}/{generationId}/image.png|jpg|webp` |
+| database | `/data` | `loomi.db` به‌همراه دو فایل کنار آن که WAL فعال می‌سازد (`loomi.db-wal`, `loomi.db-shm`)، و کلیدهای Data Protection در `/data/keys` |
+| browser-profiles | `/data/profiles` | پروفایل Chromium و نشست ChatGPT، یک پوشه به ازای هر حساب |
+| images | `/data/images` | تصویرهای تولیدشده در `projects/{projectId}/{generationId}/image.png\|jpg\|webp` **و** تصویرهای مرجع بارگذاری‌شده در `uploads/{userId}/{uploadId}.png\|jpg\|webp` — هر دو زیر همین یک ریشه‌اند (`ImageStorage`)، پس یک volume هر دو را پوشش می‌دهد؛ volume جدا برای uploads لازم نیست و اضافه کردنش تکراری بود |
 
-کل volumeها داده خصوصی هستند. قبل از ارتقا backup بگیرید؛ برای backup سازگار، سرویس را متوقف کنید یا از SQLite backup API استفاده کنید. فایل DB را هنگام فعال بودن WAL به‌تنهایی کپی نکنید. برای backup کامل، هر سه volume را نگه دارید. حذف volumeها اطلاعات را پاک می‌کند.
+هر سه volume داده خصوصی‌اند و هیچ‌کدام زائد نیست: `database` دقیقاً چیزی است که مستقیم زیر `/data` می‌ماند (نه `/profiles`، نه `/images`)، و دو مورد دیگر دقیقاً همان دو زیرپوشه‌اند. قبل از ارتقا backup بگیرید؛ برای backup سازگار، سرویس را متوقف کنید یا از SQLite backup API استفاده کنید (پایین را ببینید). فایل DB را هنگام فعال بودن WAL به‌تنهایی و بدون دو فایل کنارش کپی نکنید — بدون آن‌ها backup ممکن است نوشته‌های تأییدنشده را نداشته باشد. برای backup کامل، هر سه volume را نگه دارید. حذف volumeها اطلاعات را پاک می‌کند.
+
+### اندازه سرور برای چند حساب هم‌زمان
+
+هر حساب متصل یک Chromium پایدار جدا روی همان نمایشگر مجازی `:99` باز می‌کند؛ fluxbox پنجره‌ها را مدیریت می‌کند، پس تعداد حساب‌ها محدود به سخت‌افزار است نه معماری. هر Chromium حدود ۵۰۰ مگابایت حافظه می‌گیرد؛ خودِ کانتینر (dotnet، Xvfb، fluxbox، x11vnc، websockify، SQLite) حدود ۳۰۰ مگابایت پایه دارد.
+
+| حساب‌های متصل هم‌زمان | حافظه کانتینر (تقریبی، کف نه سقف) | `LOOMI_SHM_SIZE` پیشنهادی |
+|---|---|---|
+| ۱ | ~۱ گیگابایت | `1gb` |
+| ۲ | ~۱.۵ گیگابایت | `2gb` (پیش‌فرض) |
+| ۴ | ~۲.۵ گیگابایت | `2gb`–`4gb` |
+
+این اعداد کف هستند نه سقف؛ تولید هم‌زمان چند تصویر یا صفحات سنگین‌تر مصرف را بالا می‌برد. `docker-compose.yml` مقدار `shm_size` را از `LOOMI_SHM_SIZE` در `.env` می‌خواند (پیش‌فرض `2gb`)؛ برای بیش از چهار حساب آن را بالا ببرید. Chromium با سوییچ `--disable-dev-shm-usage` اجرا می‌شود، پس بیشتر فایل‌های موقتش به‌جای `/dev/shm` روی `/tmp` می‌رود و وابستگی به `shm_size` را کم می‌کند، ولی صفر نمی‌کند.
+
+وقتی حافظه تمام شود دو حالت متفاوت پیش می‌آید: اگر کل RAM هاست تمام شود، OOM killer هسته لینوکس یکی از پردازه‌های سنگین (معمولاً یک Chromium یا خودِ `dotnet`) را می‌کشد؛ چون `restart: unless-stopped` تنظیم شده کانتینر دوباره بالا می‌آید، ولی کارهای در حال اجرا با کد `Interrupted` شکست می‌خورند و خودکار به صف برنمی‌گردند. اگر فقط `/dev/shm` تمام شود (نه کل RAM)، رندر Chromium کرش می‌کند و عملیات معمولاً با `AutomationFailed` یا `GenerationTimeout` شکست می‌خورد، نه با یک پیام روشن‌تر — در این حالت `LOOMI_SHM_SIZE` را بالا ببرید.
+
+## عملیات
+
+بخش کوتاه برای نگهداری سرور؛ کامل نیست، ولی صادق است.
+
+**Backup.** هر سه volume را نگه دارید (جدول بالا). برای یک نسخه سازگار از دیتابیس در حالی که سرویس روشن است، به‌جای کپی مستقیم `loomi.db` از خود SQLite بخواهید یک عکس فوری بگیرد:
+
+```bash
+docker compose exec loomi sqlite3 /data/loomi.db ".backup /data/loomi-backup.db"
+docker compose cp loomi:/data/loomi-backup.db ./loomi-backup-$(date +%F).db
+```
+
+یا ساده‌تر و مطمئن‌تر: سرویس را کوتاه متوقف کنید (`docker compose stop loomi`)، سه volume را tar کنید، دوباره `docker compose start loomi` بزنید. کلیدهای Data Protection هم داخل `database` هستند؛ بدون آن‌ها بعد از بازیابی همه کوکی‌های نشست باطل می‌شوند، نه بیشتر — رمز کاربری گم نمی‌شود چون در دیتابیس است.
+
+**به‌روزرسانی.** پیش از هر ارتقا backup بگیرید.
+
+```bash
+git pull
+docker compose up -d --build
+docker compose logs -f loomi
+```
+
+Migration در استارتاپ خودکار اعمال می‌شود (`db.Database.MigrateAsync()` در `Program.cs`)؛ لاگ راه‌اندازی را ببینید تا مطمئن شوید بدون خطا بالا آمده. اگر ساخت جدید Playwright به Chromium تازه‌تری نیاز داشته باشد، Dockerfile خودش آن را در build نصب می‌کند؛ پروفایل‌های موجود در `browser-profiles` دست‌نخورده می‌مانند.
+
+**چرا یک مرورگر وصل نمی‌شود.** اول `GET /api/auth/status` را ببینید (یا صفحه Settings). اگر `LoginRequired` است، از دسکتاپ راه‌دور وارد شوید (پایین). اگر هیچ‌کدام نیست:
+
+```bash
+docker compose logs --tail=200 loomi
+```
+
+دنبال این‌ها بگردید: `Chromium (...) could not start on this host` (یعنی هیچ‌کدام از build خود Playwright و کانال‌های fallback بالا نیامدند — نادر در Docker چون Dockerfile خودش Chromium را نصب می‌کند)، حافظه ناکافی یا کرش بی‌صدا (بخش اندازه سرور بالا را ببینید)، یا `VerificationRequired`/چالش انسان‌بودن که فقط با ورود دستی در همان پنجره رفع می‌شود. `docker compose ps` هم وضعیت healthcheck (`/health`) کانتینر را نشان می‌دهد.
+
+**رسیدن به دسکتاپ راه‌دور برای ورود یک حساب.** فقط Owner این کار را می‌کند، چون فقط او حساب‌ها را می‌سازد و متصل می‌کند (`AuthController`، `[Authorize(Roles = "Owner")]`). با کاربر Owner وارد Loomi شوید، از صفحه حساب‌ها **Connect** بزنید، سپس **Open secure browser**؛ رابط از `GET /api/auth/accounts/{id}/status` به مسیر `‎/desktop/` (پروکسی احرازهویت‌شده به websockify روی 6080) می‌رود. پورت 6080 خودش هیچ‌وقت به بیرون کانتینر منتشر نمی‌شود؛ تنها راه رسیدن به آن همین مسیر است.
 
 ## اولین استفاده
 
@@ -128,6 +177,8 @@ Volumeها:
 | `Browser__GenerationTimeoutSeconds` | 600 |
 | `Browser__StableSeconds` | 8؛ پایداری تصویر پس از پایان دکمه Stop |
 | `Browser__Selectors__Composer` و سایر selectorها | مطابق بخش بعد |
+| `Telegram__BotToken` | اختیاری (فاز ۴). توکن ربات از @BotFather. اگر تنظیم نشود، سرویس ربات بی‌صدا غیرفعال می‌ماند |
+| `Gemini__Model` | اختیاری (فاز ۵). نام مدل تولید تصویر Gemini. مقداری در این سند حدس زده نشده؛ نام مدل پشتیبانی‌شده را از مستندات رسمی روزِ فاز ۵ در `.env` قرار دهید |
 
 کلید دسترسی در کد و git ذخیره نمی‌شود. تغییر آن ورودهای جدید را عوض می‌کند؛ کوکی‌های از قبل صادرشده تا پایان اعتبار باقی می‌مانند. برای ابطال فوری همه نشست‌های Loomi، سرویس را متوقف کنید، کلید را عوض کنید و کلیدهای Data Protection در `/data/keys` را پس از backup پاک کنید.
 
