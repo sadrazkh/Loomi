@@ -33,7 +33,7 @@ public class ProjectsController(AppDbContext db, ProjectRepository projects, Gen
     }
     [HttpPost("{id:guid}/generate")] public async Task<IActionResult> Generate(Guid id, PromptRequest request, CancellationToken ct)
     {
-        var g = await generations.SubmitAsync(Me, id, request.Prompt, Provider.ChatGPT, Operation.Generate, null, request.Inputs, ct);
+        var g = await generations.SubmitAsync(Me, id, request.Prompt, request.Provider ?? Provider.ChatGPT, Operation.Generate, null, request.Inputs, ct);
         return Accepted($"/api/generations/{g.Id}", GenerationDto.From(g));
     }
     [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct)

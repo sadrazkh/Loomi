@@ -7,7 +7,8 @@ namespace Loomi.BrowserAutomation;
 
 public record ConnectionStatus(string State, bool Busy, string? DesktopUrl) { /// <summary>Set when work is waiting but no account can take it, so a still queue explains itself instead of looking broken.</summary>
     public string? Stalled { get; init; } }
-public record BrowserResult(byte[] Image, string ConversationUrl);
+/// <summary>Null conversation for a provider that has none: an API answers once and leaves no chat to open.</summary>
+public record BrowserResult(byte[] Image, string? ConversationUrl);
 /// <summary>Reports progress and, when first seen, the conversation URL, so a run that later fails still leaves the chat on the row.</summary>
 public delegate Task ReportStatus(RunStatus status, string? conversation = null);
 /// <summary>One ChatGPT account's browser: its own profile, page and gate, so two accounts never wait on each other.</summary>

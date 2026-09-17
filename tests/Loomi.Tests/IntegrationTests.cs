@@ -23,9 +23,16 @@ public class AppFactory : WebApplicationFactory<Program>
         builder.UseEnvironment("Development");
         builder.UseSetting("Security:AccessKey", Key);
         builder.UseSetting("Storage:Root", Root);
-        builder.ConfigureServices(services => services.RemoveAll<IHostedService>());
+        builder.ConfigureServices(services => { services.RemoveAll<IHostedService>(); Unpooled(services, Root); });
     }
-    protected override void Dispose(bool disposing) { base.Dispose(disposing); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); if (Directory.Exists(Root)) Directory.Delete(Root, true); }
+    /// <summary>Every factory gets its own unpooled connections. Test classes run side by side and SqliteConnection.ClearAllPools is process-wide, so one
+    /// factory tidying up after itself was closing connections another was still using, which surfaced as a disposed sqlite3 handle in an unrelated test.</summary>
+    public static void Unpooled(IServiceCollection services, string root)
+    {
+        foreach (var registered in services.Where(d => d.ServiceType.Name.Contains("DbContextOptions")).ToList()) services.Remove(registered);
+        services.AddDbContext<AppDbContext>(o => o.UseSqlite($"Data Source={Path.Combine(root, "loomi.db")};Foreign Keys=True;Default Timeout=30;Pooling=False"));
+    }
+    protected override void Dispose(bool disposing) { base.Dispose(disposing); if (Directory.Exists(Root)) try { Directory.Delete(Root, true); } catch (IOException) { /* a file a browser still holds is a temp folder the machine will sweep */ } }
 }
 public class IntegrationTests
 {

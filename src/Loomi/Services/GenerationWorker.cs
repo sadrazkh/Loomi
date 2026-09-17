@@ -173,7 +173,8 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
                 var request = new GenerationRequest(account.Provider, g.Operation, g.Prompt, await InputPathsAsync(db, g, parent, ct), parent?.ConversationUrl);
                 var result = await providers.For(account.Provider).RunAsync(account, request, Report, ct);
                 g.LocalImagePath = await storage.SaveAsync(g.ProjectId, g.Id, result.Image, ct);
-                g.ConversationUrl = result.ConversationUrl; g.Project.ConversationUrl = result.ConversationUrl;
+                // A provider without a conversation leaves the project's last link alone rather than blanking it.
+                if (result.ConversationUrl != null) { g.ConversationUrl = result.ConversationUrl; g.Project.ConversationUrl = result.ConversationUrl; }
                 await Report(RunStatus.Completed);
             }
             // A cancelled run is a decision, not a fault, and the row has to say so or it looks like the queue ate it.

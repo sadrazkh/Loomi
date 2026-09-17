@@ -15,11 +15,11 @@ services:
       Security__KnownProxies__0: ${LOOMI_PROXY_IP:-172.17.0.1}
       ASPNETCORE_ENVIRONMENT: Production
       Storage__Root: /data
-      # Optional (Phase 4). Uncomment and set TELEGRAM_BOT_TOKEN in .env to enable the bot; the app
+      # Optional. Uncomment and set TELEGRAM_BOT_TOKEN in .env to enable the bot; the app
       # stays silent about it when unset.
       # Telegram__BotToken: ${TELEGRAM_BOT_TOKEN}
-      # Optional (Phase 5). Left commented out on purpose: Phase 5 fills in the supported model name
-      # from Google's current documentation. Uncomment and set GEMINI_MODEL in .env once it does.
+      # Optional. Defaults to gemini-3.1-flash-image in appsettings.json; set GEMINI_MODEL in .env only to
+      # name another model Google documents.
       # Gemini__Model: ${GEMINI_MODEL}
     volumes:
       - database:/data

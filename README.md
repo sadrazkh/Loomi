@@ -177,8 +177,19 @@ docker compose logs --tail=200 loomi
 | `Browser__GenerationTimeoutSeconds` | 600 |
 | `Browser__StableSeconds` | 8؛ پایداری تصویر پس از پایان دکمه Stop |
 | `Browser__Selectors__Composer` و سایر selectorها | مطابق بخش بعد |
-| `Telegram__BotToken` | اختیاری (فاز ۴). توکن ربات از @BotFather. اگر تنظیم نشود، سرویس ربات بی‌صدا غیرفعال می‌ماند |
-| `Gemini__Model` | اختیاری (فاز ۵). نام مدل تولید تصویر Gemini. مقداری در این سند حدس زده نشده؛ نام مدل پشتیبانی‌شده را از مستندات رسمی روزِ فاز ۵ در `.env` قرار دهید |
+| `Telegram__BotToken` | اختیاری. توکن ربات از @BotFather. اگر تنظیم نشود، سرویس ربات بی‌صدا غیرفعال می‌ماند |
+| `Telegram__BotUsername` | اختیاری. فقط برای این‌که تنظیمات بتواند لینک «باز کردن ربات» را نشان دهد |
+| `Gemini__Model` | پیش‌فرض `gemini-3.1-flash-image` |
+| `Gemini__Endpoint` | پیش‌فرض `https://generativelanguage.googleapis.com/v1beta/interactions` |
+| `Gemini__ApiRevision` | اختیاری و پیش‌فرض خالی. مستندات هدر `Api-Revision` را نام می‌برد ولی اجباری بودنش را نمی‌گوید؛ اگر Google خواست، این‌جا بگذارید |
+
+### ارائه‌دهنده Google (Gemini)
+
+در کنار ChatGPT که با مرورگر واقعی کار می‌کند، Gemini از **API رسمی** استفاده می‌کند: ورود خودکار حساب Google در مرورگر خودکار یک ریسک شناخته‌شده است و کلید API این ریسک را ندارد. مالک در تنظیمات یک حساب با `provider: Gemini` و کلید می‌سازد؛ کلید با Data Protection مهر‌و‌موم می‌شود و از آن پس فقط چهار نویسه آخرش دیده می‌شود.
+
+نام مدل، endpoint و هدر کلید از مستندات رسمی روز ۲۰۲۶-۰۹-۱۷ خوانده شده‌اند: <https://ai.google.dev/gemini-api/docs/image-generation>. مدل‌های تصویری که همان صفحه نام می‌برد: `gemini-3.1-flash-image` (پیش‌فرض اینجا)، `gemini-3.1-flash-lite-image`، `gemini-3-pro-image`، `gemini-2.5-flash-image`. کلید در هدر `x-goog-api-key` می‌رود، هیچ‌وقت در query string. اگر Google مدل‌ها را عوض کرد، `Gemini__Model` را بدون تغییر کد عوض کنید.
+
+سقف روزانه حساب، انتقال کار به حساب دیگر و قیمت‌گذاری برای Gemini عیناً مثل ChatGPT کار می‌کند: خطای ۴۲۹ مثل «سهمیه تمام شد» رفتار می‌کند تا کار به حساب بعدی برود، و کلید ردشده حساب را تا جایگزینی کنار می‌گذارد.
 
 کلید دسترسی در کد و git ذخیره نمی‌شود. تغییر آن ورودهای جدید را عوض می‌کند؛ کوکی‌های از قبل صادرشده تا پایان اعتبار باقی می‌مانند. برای ابطال فوری همه نشست‌های Loomi، سرویس را متوقف کنید، کلید را عوض کنید و کلیدهای Data Protection در `/data/keys` را پس از backup پاک کنید.
 

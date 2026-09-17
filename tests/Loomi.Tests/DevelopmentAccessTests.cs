@@ -18,9 +18,9 @@ public class UnconfiguredFactory(string environment, string? accessKey) : WebApp
         builder.UseEnvironment(environment);
         builder.UseSetting("Security:AccessKey", accessKey ?? string.Empty);
         builder.UseSetting("Storage:Root", Root);
-        builder.ConfigureServices(services => services.RemoveAll<IHostedService>());
+        builder.ConfigureServices(services => { services.RemoveAll<IHostedService>(); AppFactory.Unpooled(services, Root); });
     }
-    protected override void Dispose(bool disposing) { base.Dispose(disposing); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); if (Directory.Exists(Root)) Directory.Delete(Root, true); }
+    protected override void Dispose(bool disposing) { base.Dispose(disposing); if (Directory.Exists(Root)) try { Directory.Delete(Root, true); } catch (IOException) { /* a file a browser still holds is a temp folder the machine will sweep */ } }
 }
 public class DevelopmentAccessTests
 {

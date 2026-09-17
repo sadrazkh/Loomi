@@ -4,7 +4,8 @@ namespace Loomi.DTOs;
 public record CreateProject([Required, StringLength(160, MinimumLength = 1)] string Title);
 /// <summary>One reference image: an upload of the caller's or a finished generation. Exactly one id is set.</summary>
 public record InputRef(Guid? UploadId, Guid? GenerationId);
-public record PromptRequest([Required, StringLength(12000, MinimumLength = 1)] string Prompt, List<InputRef>? Inputs = null);
+/// <summary>Provider is optional and defaults to ChatGPT, so every caller written before a second provider existed still means what it meant.</summary>
+public record PromptRequest([Required, StringLength(12000, MinimumLength = 1)] string Prompt, List<InputRef>? Inputs = null, Provider? Provider = null);
 public record InputDto(Guid? UploadId, Guid? GenerationId, string Url)
 {
     public static InputDto From(GenerationInput i) => new(i.UploadId, i.SourceGenerationId, i.UploadId is { } upload ? $"/api/uploads/{upload}" : $"/api/generations/{i.SourceGenerationId}/image");

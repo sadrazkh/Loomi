@@ -19,6 +19,9 @@ public class GenerationService(AppDbContext db, IOptions<BrowserOptions> browser
         if (await db.Generations.CountAsync(g => g.Status != RunStatus.Completed && g.Status != RunStatus.Failed && g.Status != RunStatus.Cancelled, ct) >= 25) throw new InvalidOperationException("QueueFull");
         // Refused here rather than silently parked in the queue: a limit is only actionable while the person who hit it is still looking at it.
         if (await db.RemainingAsync(project.UserId, ct) == 0) throw new InvalidOperationException("QuotaExceeded");
+        // Work for a provider no account serves would wait for ever, so it is refused while the person can still pick another. A workspace with no
+        // accounts at all is a different thing: nothing is connected yet, the queue holds the work, and /api/auth/status is what explains the wait.
+        if (await db.Accounts.AnyAsync(a => a.IsEnabled, ct) && !await db.Accounts.AnyAsync(a => a.IsEnabled && a.Provider == provider, ct)) throw new InvalidOperationException("NoAccount");
         if (parentId != null)
         {
             var parent = await db.Generations.OwnedBy(viewer).FirstOrDefaultAsync(x => x.Id == parentId, ct);

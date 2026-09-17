@@ -100,6 +100,14 @@ curl -s -X POST -H "Authorization: Bearer $LOOMI_TOKEN" -H "Content-Type: applic
 
 هر عضو `inputs` **یکی** از این دو را دارد: `uploadId` (آپلود خودتان) یا `generationId` (تولیدی تمام‌شده از خودتان). ترتیب همان ترتیب ارسال به سایت است و در پاسخ به‌صورت `inputs:[{uploadId, generationId, url}]` برمی‌گردد. در `edit` و `branch` تصویر والد خودبه‌خود ورودی اول است و `inputs` به آن اضافه می‌شود؛ جمعاً حداکثر ۴. اگر تنها ورودیِ یک `generate` یک تولید از همان پروژه باشد، همان والدش می‌شود تا درخت پروژه درست بماند.
 
+### انتخاب ارائه‌دهنده
+
+`generate` یک فیلد اختیاری `provider` می‌گیرد: `"ChatGPT"` (پیش‌فرض) یا `"Gemini"`. هر تماسی که آن را نفرستد دقیقاً همان معنای قبلی را دارد. `edit` و `branch` ارائه‌دهنده‌ی والدشان را به ارث می‌برند و هیچ‌وقت زیرپای آن عوض نمی‌شود.
+
+اگر کارگاه حساب فعالی داشته باشد ولی هیچ‌کدام آن ارائه‌دهنده را سرویس ندهند، درخواست `409 NoAccount` می‌گیرد — چون آن ردیف برای همیشه در صف می‌ماند. کارگاهی که اصلاً حسابی ندارد فرق دارد: کار در صف می‌نشیند و `/api/auth/status` توضیح انتظار است.
+
+قیمت هر ارائه‌دهنده جداست (`/api/pricing`)، پس یک تولید Gemini به قیمت Gemini شارژ می‌شود. تولید Gemini `conversationUrl` ندارد و `null` برمی‌گرداند.
+
 ### وضعیت‌های generation
 
 `Queued` → `OpeningBrowser` → `OpeningChatGPT` → `SendingPrompt` → `WaitingForResponse` → `GeneratingImage` → `DownloadingImage` → `Completed`
