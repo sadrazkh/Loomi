@@ -107,24 +107,40 @@ public sealed class GeminiApiProvider(IHttpClientFactory clients, AccountSecrets
     /// Only the shape of the error is read, never its words: the body can quote the key and the prompt back.</summary>
     private string CodeFor(HttpStatusCode status, string body, ProviderAccount account)
     {
-        if (Rejects(status)) { rejected[account.Id] = 0; return "LoginRequired"; }
+        var code = Classify(status, body);
+        // Parking follows the verdict, not the status line: Google answers a dead key with 400, and an account left "Connected" after that
+        // would be handed the next run, and the one after, for as long as the key stayed wrong.
+        if (code == "LoginRequired") rejected[account.Id] = 0;
+        return code;
+    }
+    private static string Classify(HttpStatusCode status, string body)
+    {
+        if (Rejects(status)) return "LoginRequired";
         // Running out is not a broken key: the account stays usable and tomorrow's work goes to it again.
         if (status == HttpStatusCode.TooManyRequests) return "NoImageReturned";
         if (status != HttpStatusCode.BadRequest) return "AutomationFailed";
-        // The reference does not pin the error envelope down, so both the documented Google shape (a numeric code beside a status)
-        // and a plain string code are read, and only a safety marker is acted on; anything else stays generic.
         var signal = Signal(body);
-        return signal.Contains("safety", StringComparison.OrdinalIgnoreCase) || signal.Contains("blocked", StringComparison.OrdinalIgnoreCase) ? "ContentBlocked"
+        return signal.Contains("safety", StringComparison.OrdinalIgnoreCase) || signal.Contains("blocked", StringComparison.OrdinalIgnoreCase) || signal.Contains("prohibited", StringComparison.OrdinalIgnoreCase) ? "ContentBlocked"
             : signal.Contains("api_key", StringComparison.OrdinalIgnoreCase) || signal.Contains("api key", StringComparison.OrdinalIgnoreCase) ? "LoginRequired"
             : "AutomationFailed";
     }
+    /// <summary>The machine-readable part of an error and nothing else. A live call with a bad key showed why this cannot stop at the top level: Google
+    /// answers 400 with a numeric code, status INVALID_ARGUMENT, and the reason that actually names the problem — API_KEY_INVALID — inside details.
+    /// The message is deliberately not read: it is free text and can quote the prompt or the key back.</summary>
     private static string Signal(string body)
     {
         try
         {
-            if (!JsonDocument.Parse(body).RootElement.TryGetProperty("error", out var error)) return "";
-            var parts = new[] { "code", "status", "reason" }
-                .Select(name => error.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null);
+            var root = JsonDocument.Parse(body).RootElement;
+            // Some Google endpoints answer with a single-element array around the envelope.
+            if (root.ValueKind == JsonValueKind.Array) root = root.EnumerateArray().FirstOrDefault();
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("error", out var error)) return "";
+            var parts = new List<string?>();
+            foreach (var name in new[] { "code", "status", "reason" })
+                if (error.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String) parts.Add(value.GetString());
+            if (error.TryGetProperty("details", out var details) && details.ValueKind == JsonValueKind.Array)
+                foreach (var detail in details.EnumerateArray())
+                    if (detail.ValueKind == JsonValueKind.Object && detail.TryGetProperty("reason", out var reason) && reason.ValueKind == JsonValueKind.String) parts.Add(reason.GetString());
             return string.Join(' ', parts.Where(x => x != null));
         }
         catch (JsonException) { return ""; }

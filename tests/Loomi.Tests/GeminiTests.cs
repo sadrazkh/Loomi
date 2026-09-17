@@ -151,6 +151,21 @@ public class GeminiTests
         Assert.Equal("Connected", provider.StateOf(account));
     }
 
+    /// <summary>The envelope a live call with a bad key actually returned on 2026-09-17, kept verbatim: a numeric code, a status that names nothing
+    /// useful, and the reason that does buried in details. Reading only the top level called this AutomationFailed and left a dead key in rotation.</summary>
+    private const string RealInvalidKey = """
+        [{"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"API_KEY_INVALID","domain":"googleapis.com","metadata":{"service":"generativelanguage.googleapis.com"}},{"@type":"type.googleapis.com/google.rpc.LocalizedMessage","locale":"en-US","message":"API key not valid. Please pass a valid API key."}]}}]
+        """;
+
+    [Fact]
+    public async Task The_envelope_google_really_sends_for_a_bad_key_parks_the_account()
+    {
+        using var gemini = FakeGemini.Returning(HttpStatusCode.BadRequest, RealInvalidKey);
+        var (provider, account) = Ready(gemini);
+        Assert.Equal("LoginRequired", await FailureAsync(provider, account));
+        Assert.Equal("LoginRequired", provider.StateOf(account));
+    }
+
     [Fact]
     public async Task A_blocked_prompt_is_named_and_anything_unrecognised_stays_generic()
     {
