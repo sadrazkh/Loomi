@@ -9,6 +9,7 @@ using Loomi.Providers;
 using Loomi.Repositories;
 using Loomi.Security;
 using Loomi.Services;
+using Loomi.Telegram;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -73,6 +74,10 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
     foreach (var value in builder.Configuration.GetSection("Security:KnownProxies").Get<string[]>() ?? []) o.KnownProxies.Add(IPAddress.Parse(value));
 });
 builder.Services.Configure<BrowserOptions>(builder.Configuration.GetSection("Browser"));
+builder.Services.Configure<TelegramOptions>(builder.Configuration.GetSection("Telegram"));
+builder.Services.AddSingleton<GenerationEvents>();
+builder.Services.AddSingleton<ITelegramClient, TelegramClient>();
+builder.Services.AddHostedService<TelegramBotWorker>();
 builder.Services.AddSingleton<BrowserPool>();
 builder.Services.AddSingleton<AccountHealth>();
 builder.Services.AddSingleton<IImageProvider, ChatGptProvider>();
@@ -111,7 +116,7 @@ app.Use(async (ctx, next) =>
     if (ctx.WebSockets.IsWebSocketRequest && ctx.Request.Headers.Origin.ToString() != $"{ctx.Request.Scheme}://{ctx.Request.Host}") { ctx.Response.StatusCode = 403; return; }
     try { await next(); }
     catch (KeyNotFoundException) { ctx.Response.StatusCode = 404; await ctx.Response.WriteAsJsonAsync(new { error = "NotFound" }); }
-    catch (InvalidOperationException ex) when (new[] { "BrowserBusy", "QueueFull", "InvalidParent", "InvalidPrompt", "ProjectBusy", "NoAccount", "QuotaExceeded", "InsufficientCredits", "TooManyInputs", "InvalidInput", "UploadInUse" }.Contains(ex.Message))
+    catch (InvalidOperationException ex) when (new[] { "BrowserBusy", "QueueFull", "InvalidParent", "InvalidPrompt", "ProjectBusy", "NoAccount", "QuotaExceeded", "InsufficientCredits", "TooManyInputs", "InvalidInput", "UploadInUse", "AlreadyLinked", "TelegramNotConfigured" }.Contains(ex.Message))
     { ctx.Response.StatusCode = 409; await ctx.Response.WriteAsJsonAsync(new { error = ex.Message }); }
     catch (Exception ex) when (!ctx.Response.HasStarted && ex is not OperationCanceledException)
     { app.Logger.LogError("Request failed ({Type})", ex.GetType().Name); ctx.Response.StatusCode = 500; await ctx.Response.WriteAsJsonAsync(new { error = "ServerError" }); }

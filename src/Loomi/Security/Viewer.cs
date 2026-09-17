@@ -5,6 +5,8 @@ namespace Loomi.Security;
 public readonly record struct Viewer(Guid Id, bool IsOwner)
 {
     public static Viewer From(ClaimsPrincipal principal) => new(Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : Guid.Empty, principal.IsInRole(nameof(UserRole.Owner)));
+    /// <summary>For work that arrives without a request of its own — the bot — so it acts as exactly the person it is linked to and no wider.</summary>
+    public static Viewer For(AppUser user) => new(user.Id, user.Role == UserRole.Owner);
 }
 /// <summary>Where ownership is enforced. AppDbContext deliberately has no global filter, so a request-scoped query that skips this reads another user's work.</summary>
 public static class Ownership

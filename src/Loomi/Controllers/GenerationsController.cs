@@ -23,7 +23,7 @@ public class GenerationsController(AppDbContext db, GenerationService service, I
         return Accepted($"/api/generations/{g.Id}", GenerationDto.From(g));
     }
     /// <summary>Everything not finished. An owner sees the whole queue; everyone else only their own, so cancelling cannot reach across users.</summary>
-    private IQueryable<Generation> Unfinished() => db.Generations.Include(g => g.Project).Include(g => g.Inputs).OwnedBy(Me).Where(g => g.Status != RunStatus.Completed && g.Status != RunStatus.Failed && g.Status != RunStatus.Cancelled);
+    private IQueryable<Generation> Unfinished() => db.Generations.Include(g => g.Project).Include(g => g.Inputs).OwnedBy(Me).Unfinished();
     [HttpPost("{id:guid}/cancel")] public async Task<IActionResult> Cancel(Guid id, CancellationToken ct)
     {
         var g = await Unfinished().FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new KeyNotFoundException();
@@ -35,16 +35,7 @@ public class GenerationsController(AppDbContext db, GenerationService service, I
         foreach (var g in await Unfinished().ToListAsync(ct)) { await CancelAsync(g, ct); cancelled++; }
         return Ok(new { cancelled });
     }
-    /// <summary>A queued row is simply written; one already running has to be interrupted, and the run itself records the outcome.</summary>
-    private async Task<Generation> CancelAsync(Generation g, CancellationToken ct)
-    {
-        if (GenerationWorker.Interrupt(g.Id)) return g;
-        g.Status = RunStatus.Cancelled;
-        g.Project.Status = await db.Generations.AnyAsync(x => x.ProjectId == g.ProjectId && x.Id != g.Id && x.Status == RunStatus.Queued, ct) ? "Queued" : "Ready";
-        await db.SaveChangesAsync(ct);
-        await db.RefundAsync(g.Id, ct);
-        return g;
-    }
+    private Task<Generation> CancelAsync(Generation g, CancellationToken ct) => Cancellation.CancelAsync(db, g, ct);
     [HttpGet("{id:guid}/image")] public async Task<IActionResult> Image(Guid id, CancellationToken ct)
     {
         var g = await db.Generations.AsNoTracking().OwnedBy(Me).FirstOrDefaultAsync(x => x.Id == id, ct);

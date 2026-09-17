@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 namespace Loomi.Services;
 /// <summary>Spreads the queue over the usable accounts: one run per account at a time, each row given to an account of its own provider and claimed in the database so two accounts can never take the same work.</summary>
-public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry providers, IImageStorage storage, IHubContext<StatusHub> hub, AccountHealth health, ILogger<GenerationWorker> logger) : BackgroundService
+public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry providers, IImageStorage storage, IHubContext<StatusHub> hub, GenerationEvents events, AccountHealth health, ILogger<GenerationWorker> logger) : BackgroundService
 {
     private static readonly string[] Reportable = ["LoginRequired", "VerificationRequired", "GenerationTimeout", "InvalidImage", "ConversationNotSaved", "NoAccount", "NoImageReturned", "QuotaExceeded", "ContentBlocked", "UploadFailed", "InputMissing"];
     /// <summary>Picked files nobody sent are dropped once a day old; checked hourly, so the check itself costs nothing.</summary>
@@ -165,6 +165,7 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
                 if (conversation != null) { g.ConversationUrl = conversation; g.Project.ConversationUrl = conversation; }
                 await db.SaveChangesAsync(ct);
                 try { await NotifyAsync(hub, g, ct); } catch (OperationCanceledException) { throw; } catch { /* polling repairs missed notifications */ }
+                await events.PublishAsync(GenerationEvent.From(g), ct);
             }
             try
             {
@@ -203,6 +204,7 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
         await db.SaveChangesAsync();
         if (status is RunStatus.Failed or RunStatus.Cancelled) await db.RefundAsync(generationId, CancellationToken.None);
         try { await NotifyAsync(hub, g, CancellationToken.None); } catch { /* polling repairs missed notifications */ }
+        await events.PublishAsync(GenerationEvent.From(g), CancellationToken.None);
     }
     /// <summary>A reply without an image is this account's image allowance running out, not a broken run. The prompt was answered, so it can never be sent into
     /// that conversation again; a fresh conversation on a different account is the one retry that cannot double up, and without one the user is told why.</summary>

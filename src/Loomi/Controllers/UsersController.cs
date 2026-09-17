@@ -114,6 +114,9 @@ public class UsersController(AppDbContext db, PasswordService passwords, IImageS
         await db.Projects.Where(p => p.UserId == id).ExecuteDeleteAsync(ct);
         // Tokens have no foreign key to the user; without this they would sit unreachable for ever.
         await db.ApiTokens.Where(t => t.UserId == id).ExecuteDeleteAsync(ct);
+        // A Telegram link outliving its user would leave a chat that the next user of that id inherits; the unique index would also refuse a fresh link.
+        await db.TelegramLinks.Where(l => l.UserId == id).ExecuteDeleteAsync(ct);
+        await db.LinkCodes.Where(c => c.UserId == id).ExecuteDeleteAsync(ct);
         db.Users.Remove(user); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
         foreach (var project in projects) storage.DeleteProject(project);
         return NoContent();
