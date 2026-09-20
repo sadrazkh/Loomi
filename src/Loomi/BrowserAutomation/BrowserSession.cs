@@ -127,6 +127,7 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             await DetectAsync();
             if (state != "Connected") throw new InvalidOperationException(state == "VerificationRequired" ? "VerificationRequired" : "LoginRequired");
             ct.ThrowIfCancellationRequested();
+            await ClearAttachmentsAsync(ct);
             if (inputs.Count > 0) await AttachAsync(inputs, ct);
             var before = await page.Locator(settings.Selectors.Assistant).CountAsync();
             // Counted across the page, not inside the reply: the site renders a generated image in the conversation turn,
@@ -209,7 +210,9 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
         if (await input.CountAsync() == 0) await page.Locator(settings.Selectors.AttachmentMenu).First.ClickAsync();
         var multiple = await input.First.EvaluateAsync<bool>("el => el.multiple");
         List<string[]> batches = multiple ? [inputs.ToArray()] : [.. inputs.Select(path => new[] { path })];
-        var attached = 0;
+        // Counted from what is already on screen rather than from zero: an absolute target is met on the spot by somebody else's leftovers, and a
+        // control that exists but is hidden is not an attachment the composer has taken.
+        var attached = await Visible(settings.Selectors.UploadReady).CountAsync();
         foreach (var batch in batches)
         {
             // Located afresh each time: the site may replace its input after a selection.
@@ -219,11 +222,23 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
         }
         await page.Locator(settings.Selectors.UploadBusy).First.WaitForAsync(new() { State = WaitForSelectorState.Hidden, Timeout = settings.UploadTimeoutMs });
     }
+    /// <summary>Drops anything a previous run left in the composer. Loomi is the only thing driving this browser, so a leftover attachment is never
+    /// something a person meant to keep, and sending it would put an unasked-for picture into somebody else's prompt.</summary>
+    private async Task ClearAttachmentsAsync(CancellationToken ct)
+    {
+        for (var attempt = 0; attempt < 12; attempt++)
+        {
+            var remove = Visible(settings.Selectors.UploadReady);
+            if (await remove.CountAsync() == 0) return;
+            try { await remove.First.ClickAsync(new() { Timeout = 5000 }); } catch (PlaywrightException) { return; }
+            await Task.Delay(300, ct);
+        }
+    }
     /// <summary>Playwright waits for one element, not for a number of them, so the count is polled.</summary>
     private async Task WaitForCountAsync(string selector, int count, CancellationToken ct)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(settings.UploadTimeoutMs);
-        while (await page!.Locator(selector).CountAsync() < count)
+        while (await Visible(selector).CountAsync() < count)
         {
             if (DateTime.UtcNow > deadline) throw new InvalidOperationException("UploadFailed");
             await Task.Delay(250, ct);

@@ -38,6 +38,7 @@ public class Selectors
     public string FileInput { get; set; } = "input[type='file']";
     /// <summary>Only needed when the composer renders no file input until its menu opens; the live site currently has the input in the page already.</summary>
     public string AttachmentMenu { get; set; } = "button[aria-label*='Add files'], button[aria-label*='Add photos'], button[aria-label*='Attach'], button[data-testid='composer-plus-btn']";
-    public string UploadReady { get; set; } = "button[aria-label*='Remove file'], button[aria-label*='Remove attachment']";
+    /// <summary>One per attachment the composer has accepted. The site labels them "Remove &lt;filename&gt;" now, so the match is on the verb.</summary>
+    public string UploadReady { get; set; } = "button[aria-label^='Remove'], button[aria-label*='Remove file'], button[aria-label*='Remove attachment']";
     public string UploadBusy { get; set; } = "[role='progressbar']";
 }
