@@ -56,6 +56,10 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
         catch (Exception e) when (e is SocketException or OperationCanceledException) { return null; }
     }
     private Task<string?> DesktopUrlAsync() => DesktopUrlAsync(settings);
+    /// <summary>Only the matches that are actually on screen. The site renders some controls twice — a sidebar copy beside a header copy — and just one
+    /// of them is visible; taking the first in DOM order picks the hidden one, which reads as "not signed in" however well the owner had logged in.
+    /// File inputs are deliberately not filtered this way: theirs is hidden by design and still accepts files.</summary>
+    private ILocator Visible(string selector) => page!.Locator(selector).Filter(new() { Visible = true });
     public async Task ResetAsync(CancellationToken ct)
     {
         if (!await gate.WaitAsync(0, ct)) throw new InvalidOperationException("BrowserBusy");
@@ -79,11 +83,13 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
         await NavigateAsync("https://chatgpt.com/");
         await SettleAsync();
     }
-    /// <summary>The site renders after DOMContentLoaded, so deciding immediately reports a login prompt that is not there.</summary>
+    /// <summary>The site renders after DOMContentLoaded, so deciding immediately reports a login prompt that is not there. The composer is one of the
+    /// signals waited for, not the profile button: the button appears first, and settling on it let the very first answer be "login required" on a
+    /// session that was signed in perfectly well and only needed another second.</summary>
     private async Task SettleAsync()
     {
-        var signals = $"{settings.Selectors.Challenge}, {settings.Selectors.LoggedOut}, {settings.Selectors.LoggedIn}";
-        try { await page!.Locator(signals).First.WaitForAsync(new() { Timeout = settings.SettleTimeoutMs }); }
+        var signals = $"{settings.Selectors.Challenge}, {settings.Selectors.LoggedOut}, {settings.Selectors.Composer}";
+        try { await Visible(signals).First.WaitForAsync(new() { Timeout = settings.SettleTimeoutMs }); }
         catch (TimeoutException) { }
     }
     private async Task NavigateAsync(string url)
@@ -101,9 +107,9 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
         try
         {
             if (page == null || page.IsClosed) { state = "Disconnected"; return; }
-            if (await page.Locator(settings.Selectors.Challenge).First.IsVisibleAsync()) state = "VerificationRequired";
-            else if (await page.Locator(settings.Selectors.LoggedOut).First.IsVisibleAsync()) state = "LoginRequired";
-            else if (await page.Locator(settings.Selectors.LoggedIn).First.IsVisibleAsync() && await page.Locator(settings.Selectors.Composer).First.IsVisibleAsync()) state = "Connected";
+            if (await Visible(settings.Selectors.Challenge).CountAsync() > 0) state = "VerificationRequired";
+            else if (await Visible(settings.Selectors.LoggedOut).CountAsync() > 0) state = "LoginRequired";
+            else if (await Visible(settings.Selectors.LoggedIn).CountAsync() > 0 && await Visible(settings.Selectors.Composer).CountAsync() > 0) state = "Connected";
             else state = "LoginRequired";
         }
         catch (PlaywrightException) { state = "Disconnected"; }
@@ -117,7 +123,7 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             await EnsureAsync();
             await report(RunStatus.OpeningChatGPT);
             await NavigateAsync(operation == Operation.Edit && conversation != null ? conversation : "https://chatgpt.com/");
-            await page!.Locator(settings.Selectors.Composer).First.WaitForAsync();
+            await Visible(settings.Selectors.Composer).First.WaitForAsync();
             await DetectAsync();
             if (state != "Connected") throw new InvalidOperationException(state == "VerificationRequired" ? "VerificationRequired" : "LoginRequired");
             ct.ThrowIfCancellationRequested();
@@ -127,14 +133,14 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             // outside the assistant message element, so scoping the search there finds nothing however new the image is.
             var imagesBefore = await page.Locator(settings.Selectors.GeneratedImage).CountAsync();
             await report(RunStatus.SendingPrompt);
-            await page.Locator(settings.Selectors.Composer).First.FillAsync(prompt);
+            await Visible(settings.Selectors.Composer).First.FillAsync(prompt);
             // Never retry submission: a timeout after clicking may still have accepted the prompt.
-            await page.Locator(settings.Selectors.Send).First.ClickAsync();
+            await Visible(settings.Selectors.Send).First.ClickAsync();
             await report(RunStatus.WaitingForResponse);
             var deadline = DateTime.UtcNow.AddSeconds(settings.GenerationTimeoutSeconds);
             string? previous = null;
             DateTime? stableSince = null, emptySince = null;
-            bool announced = false, urlSeen = false;
+            bool announced = false, urlSeen = false, sawStop = false;
             while (DateTime.UtcNow < deadline)
             {
                 await Task.Delay(1500, ct);
@@ -143,14 +149,18 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
                     urlSeen = true;
                     await report(announced ? RunStatus.GeneratingImage : RunStatus.WaitingForResponse, page.Url);
                 }
-                var replied = await page.Locator(settings.Selectors.Assistant).CountAsync() > before;
+                var stopping = await Visible(settings.Selectors.Stop).CountAsync() > 0;
+                sawStop |= stopping;
+                // The site no longer marks a message with its author, so a turn is known to be over the way a person sees it: the stop control appeared
+                // while the model worked and has gone again. The old marker is still honoured wherever it exists.
+                var replied = await page.Locator(settings.Selectors.Assistant).CountAsync() > before || (sawStop && !stopping);
                 var images = page.Locator(settings.Selectors.GeneratedImage);
                 var image = images.Last;
                 if (await images.CountAsync() <= imagesBefore || !await image.IsVisibleAsync())
                 {
                     // A reply that has finished and brought no new image is an answer, not a delay: an account limit,
                     // a refusal, or plain text. Waiting out the timeout tells the caller nothing it can act on.
-                    if (!replied || await page.Locator(settings.Selectors.Stop).First.IsVisibleAsync()) { emptySince = null; continue; }
+                    if (!replied || stopping) { emptySince = null; continue; }
                     emptySince ??= DateTime.UtcNow;
                     if ((DateTime.UtcNow - emptySince.Value).TotalSeconds < settings.StableSeconds) continue;
                     throw new InvalidOperationException("NoImageReturned");
@@ -158,14 +168,25 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
                 emptySince = null;
                 if (!announced) { await report(RunStatus.GeneratingImage); announced = true; }
                 var source = await image.EvaluateAsync<string>("el => el.complete && el.naturalWidth >= 256 && el.naturalHeight >= 256 ? el.currentSrc : ''");
-                if (string.IsNullOrEmpty(source) || await page.Locator(settings.Selectors.Stop).First.IsVisibleAsync()) { stableSince = null; continue; }
+                if (string.IsNullOrEmpty(source) || stopping) { stableSince = null; continue; }
                 if (source != previous || stableSince == null) { previous = source; stableSince = DateTime.UtcNow; continue; }
                 if ((DateTime.UtcNow - stableSince.Value).TotalSeconds < settings.StableSeconds) continue;
                 await report(RunStatus.DownloadingImage);
                 // Read only the rendered image resource in its browser origin; no private API calls.
                 var base64 = await image.EvaluateAsync<string>("""
                     async el => {
-                      const response = await fetch(el.currentSrc);
+                      const src = el.currentSrc || el.src;
+                      // The site hands the finished picture over inline, and its own content policy refuses a fetch of a data URL from this page.
+                      // The bytes are already here, so they are read straight off the attribute instead of asked for again.
+                      if (src.startsWith('data:')) {
+                        const comma = src.indexOf(',');
+                        const meta = src.slice(5, comma);
+                        if (!meta.startsWith('image/') || !meta.includes('base64')) throw new Error('InvalidImage');
+                        const data = src.slice(comma + 1);
+                        if (data.length * 3 / 4 > 40 * 1024 * 1024) throw new Error('InvalidImage');
+                        return data;
+                      }
+                      const response = await fetch(src);
                       if (!response.ok) throw new Error('ImageDownloadFailed');
                       const blob = await response.blob();
                       if (blob.size > 40 * 1024 * 1024 || !blob.type.startsWith('image/')) throw new Error('InvalidImage');
