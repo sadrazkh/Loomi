@@ -1,0 +1,28 @@
+{
+ "en": {
+  "chat": "Chat",
+  "continuingChat": "Continuing this conversation",
+  "newChat": "New conversation",
+  "startNewChat": "Start a new conversation",
+  "continueChat": "Continue this conversation",
+  "answerPrompt": "Write your answer to continue…",
+  "continuePrompt": "Say what to change or make next in this conversation…",
+  "sendReply": "Send",
+  "Answered": "Answered in text",
+  "NoConversation": "There is no finished conversation to continue here. Start a new conversation instead.",
+  "Reply": "Reply"
+ },
+ "fa": {
+  "chat": "گفتگو",
+  "continuingChat": "در ادامه همین گفتگو",
+  "newChat": "گفتگوی تازه",
+  "startNewChat": "شروع گفتگوی تازه",
+  "continueChat": "ادامه همین گفتگو",
+  "answerPrompt": "برای ادامه، پاسخ خود را بنویسید…",
+  "continuePrompt": "بگویید در همین گفتگو چه چیزی تغییر کند یا ساخته شود…",
+  "sendReply": "ارسال",
+  "Answered": "پاسخ متنی",
+  "NoConversation": "اینجا گفتگوی تمام‌شده‌ای برای ادامه نیست. به‌جای آن گفتگوی تازه‌ای شروع کنید.",
+  "Reply": "پاسخ"
+ }
+}
