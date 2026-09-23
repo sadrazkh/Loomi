@@ -1,0 +1,16 @@
+{
+  "en": {
+    "currentPassword": "Current password",
+    "changePassword": "Change password",
+    "changePasswordHelp": "Set a new password for your own account. You will need it next time you sign in.",
+    "passwordChanged": "Password changed.",
+    "InvalidCurrentPassword": "Your current password is incorrect."
+  },
+  "fa": {
+    "currentPassword": "گذرواژه فعلی",
+    "changePassword": "تغییر گذرواژه",
+    "changePasswordHelp": "برای حساب خودتان گذرواژه تازه‌ای تعیین کنید. دفعه بعد که وارد می‌شوید به همین نیاز دارید.",
+    "passwordChanged": "گذرواژه تغییر کرد.",
+    "InvalidCurrentPassword": "گذرواژه فعلی درست نیست."
+  }
+}

@@ -1,0 +1,27 @@
+# Automatic-HTTPS reverse proxy for Loomi. Off unless the owner opts in:
+#   docker compose --profile caddy up -d
+# LOOMI_DOMAIN (from .env) must already resolve in DNS to this server before Caddy can request a
+# certificate — see docs/DEPLOY.md. deploy/nginx.conf is the alternative for a host that already runs
+# its own proxy outside Compose; run one or the other, never both.
+{
+	# Optional: uncomment and set a real address to get renewal/expiry notices from the CA. Caddy
+	# manages certificates automatically either way, with no email required.
+	# email you@example.com
+}
+
+{$LOOMI_DOMAIN} {
+	# Loomi's own limit on POST /api/uploads is 81MB (four 20MB reference images plus a little
+	# overhead; see UploadsController.MaxRequestBytes). This is a defensive ceiling on what Caddy will
+	# buffer before Loomi ever sees the request, with the same 85MB headroom deploy/nginx.conf uses —
+	# raise both together if that limit ever changes.
+	request_body {
+		max_size 85MB
+	}
+
+	# reverse_proxy forwards WebSocket upgrades transparently, so the noVNC socket under /desktop/ and
+	# the SignalR hub under /hubs/ need no special handling here, unlike deploy/nginx.conf. It also sets
+	# X-Forwarded-For and X-Forwarded-Proto by default, which is exactly what Security:KnownProxies
+	# (LOOMI_PROXY_IP=172.28.0.9 in .env, see docker-compose.yml) trusts them for, and it forwards the
+	# original Host header unchanged, which is what AllowedHosts checks against.
+	reverse_proxy loomi:8080
+}

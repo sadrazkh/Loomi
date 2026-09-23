@@ -15,6 +15,8 @@ namespace Loomi.Controllers;
 [ApiController, Route("api/session")]
 public class SessionController(AppDbContext db, PasswordService passwords, IConfiguration config, IAntiforgery antiforgery, IWebHostEnvironment environment) : ControllerBase
 {
+    // Same floor as the owner's own reset in UsersController: a self-service change should not be allowed to end up weaker than an owner-assigned one.
+    private const int MinPassword = 8;
     [HttpGet] public async Task<IActionResult> Get(CancellationToken ct)
     {
         var user = User.Identity?.IsAuthenticated == true ? await db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == Viewer.From(User).Id && !x.IsDisabled, ct) : null;
@@ -36,4 +38,15 @@ public class SessionController(AppDbContext db, PasswordService passwords, IConf
     }
     [Authorize, HttpPost("logout")]
     public async Task<IActionResult> Logout() { await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme); return NoContent(); }
+    /// <summary>A tester's own password change. Session-only: a leaked bearer token must not be able to lock the real owner of the account out of it.</summary>
+    [Authorize, SessionOnly, HttpPost("password")]
+    public async Task<IActionResult> ChangePassword(ChangePasswordRequest request, CancellationToken ct)
+    {
+        var user = await db.Users.FirstOrDefaultAsync(x => x.Id == Viewer.From(User).Id, ct) ?? throw new KeyNotFoundException();
+        if (!passwords.Verify(user, request.CurrentPassword ?? "")) return Unauthorized(new { error = "InvalidCurrentPassword" });
+        if ((request.NewPassword ?? "").Length < MinPassword) return BadRequest(new { error = "WeakPassword" });
+        user.PasswordHash = passwords.Hash(user, request.NewPassword!);
+        await db.SaveChangesAsync(ct);
+        return NoContent();
+    }
 }

@@ -12,6 +12,12 @@ services:
     environment:
       Security__AccessKey: ${LOOMI_ACCESS_KEY:?Set LOOMI_ACCESS_KEY in .env}
       AllowedHosts: ${LOOMI_HOSTS:-localhost;127.0.0.1}
+      # 172.17.0.1 is the default Docker bridge gateway: correct when the proxy runs on the host itself
+      # (deploy/nginx.conf). The optional Caddy profile below instead runs the proxy as a container on
+      # this same compose network, and Caddy's address there is pinned to 172.28.0.9 (see the "loomi"
+      # network below and deploy/Caddyfile) — set LOOMI_PROXY_IP=172.28.0.9 in .env when using it.
+      # Whichever proxy is used, only it should be able to set X-Forwarded-Proto/X-Forwarded-For; see
+      # docs/DEPLOY.md.
       Security__KnownProxies__0: ${LOOMI_PROXY_IP:-172.17.0.1}
       ASPNETCORE_ENVIRONMENT: Production
       Storage__Root: /data
@@ -25,8 +31,47 @@ services:
       - database:/data
       - browser-profiles:/data/profiles
       - images:/data/images
+    networks:
+      - loomi
     stop_grace_period: 30s
+
+  # Optional automatic-HTTPS reverse proxy, off unless asked for explicitly:
+  #   docker compose --profile caddy up -d
+  # deploy/nginx.conf remains the alternative for a host that already runs its own proxy outside Compose;
+  # the two are not meant to run together. See docs/DEPLOY.md for the full setup.
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["caddy"]
+    restart: unless-stopped
+    depends_on:
+      - loomi
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # The bare domain Caddy requests a certificate for; LOOMI_HOSTS above is the semicolon list
+      # ASP.NET Core's AllowedHosts wants and may be wider, but Caddy needs exactly one name here.
+      LOOMI_DOMAIN: ${LOOMI_DOMAIN:?Set LOOMI_DOMAIN in .env to the domain Caddy should request a certificate for}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      loomi:
+        # Fixed on purpose: Security__KnownProxies__0 above has to name Caddy's address exactly, and an
+        # address Compose assigns by default is not guaranteed to stay the same across recreations.
+        ipv4_address: 172.28.0.9
+
+networks:
+  loomi:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+
 volumes:
   database:
   browser-profiles:
   images:
+  caddy-data:
+  caddy-config:
