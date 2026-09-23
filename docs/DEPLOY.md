@@ -123,6 +123,43 @@ docker compose logs -f loomi
 
 بعد از هر ری‌استارت لازم نیست دستی **Connect** بزنید: Loomi هنگام بالا آمدن همه‌ی حساب‌های فعال را خودش وصل می‌کند و چند ثانیه بعد وضعیت Connected می‌شود. اگر نشد، همان حساب از قبل نیاز به ورود داشته است (بخش بعد).
 
+## روی Harbora
+
+نسخه‌ای که روی `https://loomi.platform.irnetfree.info` اجراست همین‌طور بالا آمده است. HTTPS، دامنه و ری‌استارت را خود Harbora می‌دهد؛ Caddy، nginx و `docker compose` لازم نیست.
+
+**یک بار، در پنل:**
+
+1. پروژه‌ی **Loomi** و داخلش اپ **`loomi`**: Source = **Harbora CLI** (Upload)، Container port = **`8080`**، Instance size = **Medium** (۲ گیگ؛ هر حساب ChatGPT یک Chromium حدود ۵۰۰ مگ است).
+2. **Volumes** → `/data`. پایگاه‌داده، تصویرها، پروفایل‌های مرورگر و کلیدها همه زیر همین‌اند. نامش روی سرور `harbora-vol-loomi-data` است.
+3. **Environment Variables**:
+   - `AllowedHosts` = `loomi.platform.irnetfree.info`
+   - `Security__KnownNetworks__0` = `10.0.0.0/8`، `Security__KnownNetworks__1` = `172.16.0.0/12`، `Security__KnownNetworks__2` = `192.168.0.0/16` — Traefik بعد از هر ری‌استارت با IP تازه‌ای به شبکه‌ی اپ وصل می‌شود، پس فقط با بازه می‌شود به آن اعتماد کرد. بدون این، همه‌ی تسترها از نگاه Loomi یک IP‌اند و یک سهمیه‌ی ورود مشترک دارند.
+
+**کلید دسترسی (رمز اول owner) از فرم پنل رد نمی‌شود.** Loomi هر فایل زیر `/data/secrets` را هم‌نام متغیرش می‌خواند، پس کلید روی خود volume است: `/data/secrets/Security__AccessKey`. آن را روی ماشین خودتان بسازید و نگه دارید، بعد از طریق stdin به سرور بفرستید تا در هیچ خط فرمانی دیده نشود:
+
+```bash
+openssl rand -hex 32 | tr -d '\r\n' > loomi-access-key
+cat loomi-access-key | ssh <server> 'sudo docker run --rm -i --entrypoint sh -v harbora-vol-loomi-data:/data alpine -c "umask 077; mkdir -p /data/secrets && cat > /data/secrets/Security__AccessKey && chown -R 1654:1654 /data"'
+```
+
+این کلید فقط اولین owner را می‌سازد. بعد از اولین ورود (نام‌کاربری `owner`) رمز را از Settings عوض کنید؛ عوض‌کردن فایل بعد از آن اثری ندارد.
+
+**هر به‌روزرسانی**، از ریشه‌ی مخزن:
+
+```bash
+harbora deploy loomi -y
+```
+
+`harbora.yml` فقط محتوای commit‌شده‌ی شاخه‌ی `master` را می‌فرستد؛ چیزی از `src/Loomi/Storage` (دیتابیس و نشست‌های ChatGPT اجرای محلی) هرگز بالا نمی‌رود. Harbora کانتینر تازه را کنار قبلی بالا می‌آورد و قبلی را بی‌خبر می‌کشد. Loomi تا وقتی نمونه‌ی قبلی قفلش را رها نکرده (حداکثر حدود ۲۰ ثانیه بعد از حذفش) نه مرورگری باز می‌کند نه صف را جلو می‌برد — در لاگ: «Waiting for the previous instance …» — و قفل Chromium به‌جامانده از کانتینر قبلی را خودش پاک می‌کند.
+
+**نکته‌ها:**
+
+- تغییر یک متغیر فقط با **Deploy** بعدی اعمال می‌شود، نه با Restart.
+- `/dev/shm` روی Harbora ۶۴ مگ است و عوض نمی‌شود؛ Chromium با `--disable-dev-shm-usage` اجرا می‌شود.
+- health check خود Harbora آدرس `/` را با نام کانتینر می‌زند و 400 می‌گیرد (به‌خاطر `AllowedHosts`)؛ عادی است و deploy را رد نمی‌کند.
+- لاگ برنامه: پنل → Loomi → **Logs**.
+- `deploy/backup.sh` مخصوص `docker compose` است و هنوز برای Harbora تطبیق داده نشده.
+
 ## وقتی همه‌چیز ناگهان «Disconnected» می‌شود
 
 معمولاً یعنی ظاهر صفحه‌ی ChatGPT عوض شده و selectorهای پیکربندی‌شده دیگر چیزی روی صفحه پیدا نمی‌کنند — نه یک باگ در Loomi. بدون rebuild قابل رفع است:
