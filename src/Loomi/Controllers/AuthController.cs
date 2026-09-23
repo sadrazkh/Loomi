@@ -22,7 +22,7 @@ public class AuthController(AppDbContext db, ProviderRegistry providers, Account
     [HttpGet("status")] public async Task<IActionResult> Status(CancellationToken ct)
     {
         var accounts = await db.Accounts.AsNoTracking().Where(a => a.IsEnabled).ToListAsync(ct);
-        var byProvider = accounts.GroupBy(a => a.Provider).Select(g => new { provider = g.Key.ToString(), accounts = g.Count(), connected = g.Count(a => providers.For(a.Provider).StateOf(a) == "Connected") });
+        var byProvider = accounts.GroupBy(a => a.Provider).Select(g => new { provider = g.Key.ToString(), accounts = g.Count(), connected = g.Count(a => providers.For(a.Provider).StateOf(a) == "Connected"), open = g.Count(a => providers.For(a.Provider).StateOf(a) != "Disconnected") });
         // A member is never handed the desktop link: it opens only for the owner, so offering it would be a button that always says no.
         var desktop = User.IsInRole(nameof(UserRole.Owner)) ? await DesktopAsync() : null;
         return Ok(new { ready = accounts.Any(a => providers.For(a.Provider).StateOf(a) == "Connected"), stalled = await StalledAsync(accounts, ct), desktopUrl = desktop, providers = byProvider });

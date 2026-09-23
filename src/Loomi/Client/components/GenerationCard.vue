@@ -1,6 +1,7 @@
 <script setup>
 import { Pencil, GitBranch, Download, ExternalLink, Image, LoaderCircle, AlertTriangle, X } from 'lucide-vue-next';
-defineProps({ generation:Object, t:Function, number:Number, parentNumber:Number, locale:String });
+import { queueText } from './queue.js';
+defineProps({ generation:Object, t:Function, number:Number, parentNumber:Number, locale:String, queue:Object });
 defineEmits(['edit','branch','preview','cancel']);
 const settled = g => ['Completed','Answered','Failed','Cancelled'].includes(g.status);
 </script>
@@ -8,7 +9,7 @@ const settled = g => ['Completed','Answered','Failed','Cancelled'].includes(g.st
  <div class="card-meta"><span class="mono">{{ String(number).padStart(2,'0') }}</span><span>{{ t(generation.operation) }}</span><span v-if="parentNumber" class="muted">↳ {{ t('parent') }} {{ String(parentNumber).padStart(2,'0') }}</span><span class="status" :data-status="generation.status">{{ t(generation.status) }}</span></div>
  <button v-if="generation.imageUrl" class="image-frame" :aria-label="t('preview')" @click="$emit('preview',generation)"><img :src="generation.imageUrl" :alt="generation.prompt" loading="lazy"></button>
  <p v-else-if="generation.replyText" class="card-reply" dir="auto">{{ generation.replyText }}</p>
- <div v-else class="image-placeholder"><AlertTriangle v-if="settled(generation)"/><LoaderCircle v-else class="spin"/><span>{{ t(generation.status) }}</span></div>
+ <div v-else class="image-placeholder"><AlertTriangle v-if="settled(generation)"/><LoaderCircle v-else class="spin"/><span>{{ t(generation.status) }}<small v-if="generation.status==='Queued'&&queue" class="queue-note">{{ queueText(queue,t,locale) }}</small></span></div>
  <div class="card-body"><div v-if="generation.inputs?.length" class="card-inputs" role="group" :aria-label="t('references')"><img v-for="(input,n) in generation.inputs" :key="n" :src="input.url" alt="" loading="lazy"></div><p class="prompt-text" dir="auto">{{ generation.prompt }}</p><p v-if="generation.errorMessage" class="error-text">{{ t(generation.errorMessage) }} <small>{{ t('retryHint') }}</small></p><time>{{ new Date(generation.createdAt).toLocaleString(locale) }}</time></div>
  <footer><button :disabled="!generation.imageUrl" @click="$emit('edit',generation)"><Pencil/>{{ t('edit') }}</button><button :disabled="!generation.imageUrl" @click="$emit('branch',generation)"><GitBranch/>{{ t('branch') }}</button><button v-if="!settled(generation)" class="danger" @click="$emit('cancel',generation)"><X/>{{ t('cancel') }}</button><span class="grow"/><a v-if="generation.imageUrl" class="icon-button" :href="generation.imageUrl" :download="`loomi-${generation.id}`" :aria-label="t('download')"><Download/></a><a v-if="generation.conversationUrl" class="icon-button" :href="generation.conversationUrl" target="_blank" rel="noopener noreferrer" :aria-label="t('viewChat')"><ExternalLink/></a></footer>
 </article></template>

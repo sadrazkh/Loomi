@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Loomi.Services;
 /// <summary>Spreads the queue over the usable accounts: one run per account at a time, each row given to an account of its own provider and claimed in the database so two accounts can never take the same work.</summary>
 public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry providers, IImageStorage storage, IHubContext<StatusHub> hub, GenerationEvents events, AccountHealth health,
-                              Microsoft.Extensions.Options.IOptions<BrowserOptions> browser, InstanceLease lease, ILogger<GenerationWorker> logger) : BackgroundService
+                              Microsoft.Extensions.Options.IOptions<BrowserOptions> browser, InstanceLease lease, QueueEstimates estimates, ILogger<GenerationWorker> logger) : BackgroundService
 {
     private static readonly string[] Reportable = ["LoginRequired", "VerificationRequired", "GenerationTimeout", "InvalidImage", "ConversationNotSaved", "NoAccount", "NoImageReturned", "QuotaExceeded", "ContentBlocked", "UploadFailed", "InputMissing"];
     /// <summary>Picked files nobody sent are dropped once a day old; checked hourly, so the check itself costs nothing.</summary>
@@ -123,10 +123,11 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var queue = await QueueAsync(db, ct);
-        if (queue.Count == 0) return false;
+        var accounts = await db.Accounts.Where(a => a.IsEnabled).OrderBy(a => a.LastUsedAt).ToListAsync(ct);
+        if (queue.Count == 0) { await PublishQueueAsync(db, queue, accounts, ct); return false; }
         var started = false;
         // Least recently used first, so work spreads across the accounts instead of piling onto whichever one happens to sort first.
-        foreach (var account in await db.Accounts.Where(a => a.IsEnabled).OrderBy(a => a.LastUsedAt).ToListAsync(ct))
+        foreach (var account in accounts)
         {
             if (queue.Count == 0) break;
             if (running.ContainsKey(account.Id) || providers.For(account.Provider).IsBusy(account) || !await UsableAsync(db, account, ct)) continue;
@@ -135,25 +136,46 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
             if (index < 0) continue;
             var generation = queue[index].Id; queue.RemoveAt(index);
             if (!await ClaimAsync(db, generation, account.Id, ct)) continue;
+            estimates.Started(account.Id, account.Provider, DateTime.UtcNow);
             account.LastUsedAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
             running[account.Id] = Task.Run(() => RunAsync(account.Id, generation, ct), ct);
             started = true;
         }
+        await PublishQueueAsync(db, queue, accounts, ct);
         return started;
     }
-    /// <summary>The queue in service order, without the rows whose owner has already spent their day.</summary>
-    private static async Task<List<(Guid Id, Provider Provider, Guid? Pinned)>> QueueAsync(AppDbContext db, CancellationToken ct)
+    /// <summary>Tells each person where their waiting requests stand, and only the people whose numbers moved. A count and a time, never whose work is ahead.</summary>
+    private async Task PublishQueueAsync(AppDbContext db, List<(Guid Id, Guid User, Provider Provider, Guid? Pinned)> queue, List<ProviderAccount> accounts, CancellationToken ct)
     {
-        var queued = await db.Generations.AsNoTracking().Where(g => g.Status == RunStatus.Queued).OrderBy(g => g.CreatedAt).Select(g => new { g.Id, g.UserId, g.Provider, g.AccountId }).ToListAsync(ct);
+        var now = DateTime.UtcNow;
+        var lanes = new Dictionary<Provider, List<double>>();
+        foreach (var account in accounts)
+        {
+            var busy = running.ContainsKey(account.Id) || estimates.IsRunning(account.Id);
+            if (!busy && !await UsableAsync(db, account, ct)) continue;
+            (lanes.TryGetValue(account.Provider, out var list) ? list : lanes[account.Provider] = []).Add(estimates.Remaining(account.Id, now));
+        }
+        var order = queue.Select(q => new QueueEstimates.Waiting(q.Id, q.User, q.Provider)).ToList();
+        foreach (var (user, positions) in estimates.Publish(order, QueueEstimates.Estimate(order, lanes, estimates.Average)))
+            try { await hub.Clients.User(user.ToString()).SendAsync("QueueUpdated", positions, ct); } catch (OperationCanceledException) { throw; } catch { /* the page asks again on its next refresh */ }
+    }
+    private static readonly RunStatus[] Active = [RunStatus.OpeningBrowser, RunStatus.OpeningChatGPT, RunStatus.SendingPrompt, RunStatus.WaitingForResponse, RunStatus.GeneratingImage, RunStatus.DownloadingImage];
+    /// <summary>The queue in service order, taking turns between people, without the rows whose owner has already spent their day.</summary>
+    private static async Task<List<(Guid Id, Guid User, Provider Provider, Guid? Pinned)>> QueueAsync(AppDbContext db, CancellationToken ct)
+    {
+        var queued = await db.Generations.AsNoTracking().Where(g => g.Status == RunStatus.Queued).OrderBy(g => g.CreatedAt).Select(g => new { g.Id, g.UserId, g.Provider, g.AccountId, g.CreatedAt }).ToListAsync(ct);
         if (queued.Count == 0) return [];
         var owners = queued.Select(g => g.UserId).Distinct().ToList();
+        var active = await db.Generations.AsNoTracking().Where(g => owners.Contains(g.UserId) && Active.Contains(g.Status))
+            .GroupBy(g => g.UserId).Select(x => new { User = x.Key, Count = x.Count() }).ToDictionaryAsync(x => x.User, x => x.Count, ct);
         var since = Quota.Midnight();
         // Queued rows are left out on purpose: waiting has cost nothing yet, and counting it would let a user's own queue lock itself out the moment they reached their quota.
         var used = await db.Generations.AsNoTracking().Where(g => owners.Contains(g.UserId) && g.CreatedAt >= since && g.Status != RunStatus.Failed && g.Status != RunStatus.Cancelled && g.Status != RunStatus.Answered && g.Status != RunStatus.Queued)
             .GroupBy(g => g.UserId).Select(x => new { User = x.Key, Count = x.Count() }).ToDictionaryAsync(x => x.User, x => x.Count, ct);
         var quotas = await db.Users.AsNoTracking().Where(u => owners.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DailyQuota, ct);
-        return queued.Where(g => !Limited(quotas, used, g.UserId)).Select(g => (g.Id, g.Provider, g.AccountId)).ToList();
+        return QueueEstimates.FairOrder(queued.Where(g => !Limited(quotas, used, g.UserId)), g => g.UserId, g => g.CreatedAt, active)
+            .Select(g => (g.Id, g.UserId, g.Provider, g.AccountId)).ToList();
     }
     /// <summary>A daily quota of zero is no limit at all; a positive one is spent against today's non-failed work.</summary>
     private static bool Limited(Dictionary<Guid, int> quotas, Dictionary<Guid, int> used, Guid user) =>
@@ -173,6 +195,7 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(stopping);
         InFlight[generationId] = cancel;
         var ct = cancel.Token;
+        var answered = false;
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         try
@@ -195,6 +218,7 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
                 var result = await providers.For(account.Provider).RunAsync(account, request, Report, ct);
                 // A provider without a conversation leaves the project's last link alone rather than blanking it.
                 if (result.ConversationUrl != null) { g.ConversationUrl = result.ConversationUrl; g.Project.ConversationUrl = result.ConversationUrl; }
+                answered = true;
                 if (result.Image is { } bytes) { g.LocalImagePath = await storage.SaveAsync(g.ProjectId, g.Id, bytes, ct); await Report(RunStatus.Completed); }
                 else
                 {
@@ -219,7 +243,7 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
             g.Project.Status = await db.Generations.AnyAsync(x => x.ProjectId == g.ProjectId && x.Status == RunStatus.Queued, ct) ? "Queued" : "Ready";
             await db.SaveChangesAsync(ct);
         }
-        finally { InFlight.TryRemove(generationId, out _); }
+        finally { InFlight.TryRemove(generationId, out _); estimates.Finished(accountId, answered, DateTime.UtcNow); }
     }
     /// <summary>Writes an outcome on a fresh context: the run's own context may be mid-cancellation and refuse to save.</summary>
     private async Task FinishAsync(Guid generationId, RunStatus status)

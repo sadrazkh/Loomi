@@ -81,9 +81,11 @@ builder.Services.Configure<TelegramOptions>(builder.Configuration.GetSection("Te
 builder.Services.AddSingleton<GenerationEvents>();
 builder.Services.AddSingleton<ITelegramClient, TelegramClient>();
 builder.Services.AddHostedService<TelegramBotWorker>();
+builder.Services.AddHostedService<OwnerAlertWorker>();
 builder.Services.AddSingleton(sp => new InstanceLease(Path.Combine(root, "instance.lease"), Environment.MachineName, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(20), sp.GetRequiredService<ILogger<InstanceLease>>()));
 builder.Services.AddSingleton<BrowserPool>();
 builder.Services.AddSingleton<AccountHealth>();
+builder.Services.AddSingleton<QueueEstimates>();
 builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection("Gemini"));
 builder.Services.AddHttpClient(GeminiApiProvider.ClientName);
 builder.Services.AddSingleton<AccountSecrets>();

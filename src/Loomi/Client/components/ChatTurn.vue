@@ -1,6 +1,7 @@
 <script setup>
 import { Pencil, GitBranch, Download, ExternalLink, LoaderCircle, Bot, X } from 'lucide-vue-next';
-defineProps({ generation:Object, t:Function, number:Number, parentNumber:Number, locale:String });
+import { queueText } from './queue.js';
+defineProps({ generation:Object, t:Function, number:Number, parentNumber:Number, locale:String, queue:Object });
 defineEmits(['edit','branch','preview','cancel']);
 const settled = g => ['Completed','Answered','Failed','Cancelled'].includes(g.status);
 </script>
@@ -10,7 +11,7 @@ const settled = g => ['Completed','Answered','Failed','Cancelled'].includes(g.st
   <div class="card-meta"><span class="mono">{{ String(number).padStart(2,'0') }}</span><span>{{ t(generation.operation) }}</span><span v-if="parentNumber" class="muted">↳ {{ t('parent') }} {{ String(parentNumber).padStart(2,'0') }}</span><span class="status" :data-status="generation.status">{{ t(generation.status) }}</span></div>
   <button v-if="generation.imageUrl" class="image-frame" :aria-label="t('preview')" @click="$emit('preview',generation)"><img :src="generation.imageUrl" :alt="generation.prompt" loading="lazy"></button>
   <p v-else-if="generation.replyText" class="turn-reply" dir="auto">{{ generation.replyText }}</p>
-  <div v-else-if="!settled(generation)" class="turn-progress" role="status"><LoaderCircle class="spin"/><span>{{ t(generation.status) }}</span></div>
+  <div v-else-if="!settled(generation)" class="turn-progress" role="status"><LoaderCircle class="spin"/><span>{{ t(generation.status) }}<small v-if="generation.status==='Queued'&&queue" class="queue-note">{{ queueText(queue,t,locale) }}</small></span></div>
   <p v-else class="error-text turn-error">{{ t(generation.errorMessage||generation.status) }} <small v-if="generation.errorMessage">{{ t('retryHint') }}</small></p>
   <footer v-if="generation.imageUrl||generation.conversationUrl||!settled(generation)"><template v-if="generation.imageUrl"><button @click="$emit('edit',generation)"><Pencil/>{{ t('edit') }}</button><button @click="$emit('branch',generation)"><GitBranch/>{{ t('branch') }}</button></template><button v-if="!settled(generation)" class="danger" @click="$emit('cancel',generation)"><X/>{{ t('cancel') }}</button><span class="grow"/><a v-if="generation.imageUrl" class="icon-button" :href="generation.imageUrl" :download="`loomi-${generation.id}`" :aria-label="t('download')"><Download/></a><a v-if="generation.conversationUrl" class="icon-button" :href="generation.conversationUrl" target="_blank" rel="noopener noreferrer" :aria-label="t('viewChat')"><ExternalLink/></a></footer>
  </div></div>

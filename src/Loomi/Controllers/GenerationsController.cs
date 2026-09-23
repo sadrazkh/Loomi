@@ -8,9 +8,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 namespace Loomi.Controllers;
 [ApiController, Authorize, Route("api/generations")]
-public class GenerationsController(AppDbContext db, GenerationService service, IImageStorage storage) : ControllerBase
+public class GenerationsController(AppDbContext db, GenerationService service, IImageStorage storage, QueueEstimates queue) : ControllerBase
 {
     private Viewer Me => Viewer.From(User);
+    /// <summary>The caller's own waiting requests: how many are ahead of each and roughly how long until its turn. The same numbers the live updates carry.</summary>
+    [HttpGet("queue")] public IActionResult Queue() => Ok(queue.For(Me.Id));
     /// <summary>Another user's id is a miss, not a refusal, so ids cannot be probed.</summary>
     private async Task<Generation> MineAsync(Guid id, CancellationToken ct) => await db.Generations.Include(x => x.Inputs).OwnedBy(Me).FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new KeyNotFoundException();
     [HttpGet("{id:guid}")] public async Task<IActionResult> Get(Guid id, CancellationToken ct) => Ok(GenerationDto.From(await MineAsync(id, ct)));

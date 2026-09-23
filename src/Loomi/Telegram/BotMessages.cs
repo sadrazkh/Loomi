@@ -55,5 +55,19 @@ public static class BotMessages
         ["NoConversation"] = ("That conversation cannot be continued. Send a new description to start a fresh one.", "آن گفت‌وگو قابل ادامه نیست. یک توضیح تازه بفرستید تا گفت‌وگوی جدیدی شروع شود."),
         ["NotFound"] = ("I could not find that.", "آن را پیدا نکردم."),
         ["AutomationFailed"] = ("That did not work. Try again in a moment.", "انجام نشد. کمی بعد دوباره امتحان کنید."),
+        // Owner alerts. They reach only chats linked to an owner, so they can name accounts and point at settings members never see.
+        ["alertLoginRequired"] = ("Loomi: account \"{0}\" needs you to sign in again. Settings → Provider accounts → Open secure browser. For a Gemini key, the key was refused: replace it.",
+                                  "Loomi: حساب «{0}» باید دوباره وارد شود. تنظیمات ← حساب‌های ارائه‌دهنده ← «باز کردن مرورگر امن». اگر کلید Gemini است، کلید رد شده؛ عوضش کنید."),
+        ["alertVerificationRequired"] = ("Loomi: ChatGPT is asking account \"{0}\" for a human check. Settings → Provider accounts → Open secure browser and complete it.",
+                                         "Loomi: ChatGPT از حساب «{0}» تأیید انسانی می‌خواهد. تنظیمات ← حساب‌های ارائه‌دهنده ← «باز کردن مرورگر امن» و تأیید را انجام دهید."),
+        ["alertBack"] = ("Loomi: account \"{0}\" is connected again.", "Loomi: حساب «{0}» دوباره وصل شد."),
+        ["alertSpent"] = ("Loomi: account \"{0}\" has used up today's image allowance. Its work goes to the other accounts, and it tries again tomorrow.",
+                          "Loomi: سهمیه‌ی امروزِ تصویرِ حساب «{0}» تمام شد. کارهایش به حساب‌های دیگر می‌رود و فردا دوباره امتحان می‌کند."),
+        ["alertCapped"] = ("Loomi: account \"{0}\" reached its daily cap of {1}. Raise the cap in Settings, or add another account, if the queue needs it.",
+                           "Loomi: حساب «{0}» به سقف روزانه‌ی {1} رسید. اگر صف لازم دارد، سقف را در تنظیمات بالا ببرید یا حساب دیگری اضافه کنید."),
+        ["alertStalled"] = ("Loomi: {0} requests are waiting and no account can take them. Check Settings → Provider accounts.",
+                            "Loomi: {0} درخواست منتظر است و هیچ حسابی نمی‌تواند انجامشان دهد. تنظیمات ← حساب‌های ارائه‌دهنده را ببینید."),
+        ["alertFailures"] = ("Loomi: {0} generations failed in a row ({1}). Check Settings → Provider accounts and the app's logs.",
+                             "Loomi: {0} ساخت پشت‌سرهم ناموفق شد ({1}). تنظیمات ← حساب‌های ارائه‌دهنده و لاگ برنامه را ببینید."),
     };
 }
