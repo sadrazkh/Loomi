@@ -160,6 +160,18 @@ harbora deploy loomi -y
 - لاگ برنامه: پنل → Loomi → **Logs**.
 - `deploy/backup.sh` مخصوص `docker compose` است و هنوز برای Harbora تطبیق داده نشده.
 
+**هشدارهای تلگرام برای مالک.** Loomi وقتی حسابی دوباره ورود یا تأیید انسانی لازم دارد، سهمیه‌اش تمام شده یا به سقف روزانه رسیده، صف گیر کرده، یا سه ساخت پشت‌سرهم ناموفق شده، به تلگرام مالک پیام می‌دهد (یک بار، دوزبانه) و وقتی حساب برگشت هم خبر می‌دهد. برای روشن‌کردنش:
+
+1. از [@BotFather](https://t.me/BotFather) یک ربات بسازید و توکنش را کپی کنید.
+2. توکن را از clipboard مستقیم روی volume بنویسید (در هیچ فرم و چتی رد نمی‌شود):
+
+   ```bash
+   powershell -NoProfile -Command Get-Clipboard | tr -d '\r\n' | ssh <server> 'sudo docker run --rm -i --entrypoint sh -v harbora-vol-loomi-data:/data alpine -c "umask 077; cat > /data/secrets/Telegram__BotToken && chown 1654:1654 /data/secrets/Telegram__BotToken"'
+   ```
+
+3. در پنل Harbora روی Loomi **Restart** بزنید (فایل‌های `secrets` هنگام شروع خوانده می‌شوند، پس Restart کافی است).
+4. در Loomi با owner: تنظیمات ← تلگرام ← کد بگیرید و در ربات بفرستید: `/start CODE`. هشدارها فقط به گفت‌وگوهایی می‌رود که به یک owner وصل‌اند.
+
 ## وقتی همه‌چیز ناگهان «Disconnected» می‌شود
 
 معمولاً یعنی ظاهر صفحه‌ی ChatGPT عوض شده و selectorهای پیکربندی‌شده دیگر چیزی روی صفحه پیدا نمی‌کنند — نه یک باگ در Loomi. بدون rebuild قابل رفع است:
