@@ -63,5 +63,18 @@ public class DevelopmentAccessTests
         Assert.Contains("Security__AccessKey", Flatten(error), StringComparison.Ordinal);
     }
 
+    /// <summary>Harbora's variables can be set only through its web panel; a secret written to the volume over the server never passes through a form.</summary>
+    [Fact]
+    public async Task Production_takes_the_key_from_a_file_under_the_storage_root()
+    {
+        using var factory = new UnconfiguredFactory("Production", null);
+        Directory.CreateDirectory(Path.Combine(factory.Root, "secrets"));
+        File.WriteAllText(Path.Combine(factory.Root, "secrets", "Security__AccessKey"), AppFactory.Key + "\n");   // as echo or an editor leaves it
+        using var client = factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
+        var session = await client.GetFromJsonAsync<JsonElement>("/api/session");
+        client.DefaultRequestHeaders.Add("X-CSRF-TOKEN", session.GetProperty("csrfToken").GetString());
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/session/login", new { username = OwnerBootstrap.Username, password = AppFactory.Key })).StatusCode);
+    }
+
     private static string Flatten(Exception error) => error.InnerException is null ? error.Message : error.Message + " " + Flatten(error.InnerException);
 }

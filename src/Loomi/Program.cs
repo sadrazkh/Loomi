@@ -26,11 +26,17 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 var root = Path.GetFullPath(builder.Configuration["Storage:Root"] ?? "Storage");
 Directory.CreateDirectory(root);
+// A setting can also be a file of its own under the storage root, named like the variable, the way Docker mounts secrets. A platform whose variables
+// are reachable only through its web panel can then be handed a secret over the server itself, without it ever passing through a form. The line
+// ending echo or an editor leaves is not part of the value: kept, it made the owner's password one nobody could type.
+var secrets = Path.Combine(root, "secrets");
+if (Directory.Exists(secrets))
+    builder.Configuration.AddInMemoryCollection(Directory.GetFiles(secrets).Select(f => KeyValuePair.Create(Path.GetFileName(f).Replace("__", ":"), (string?)File.ReadAllText(f).TrimEnd('\r', '\n'))));
 var accessKey = builder.Configuration["Security:AccessKey"];
 if (string.IsNullOrWhiteSpace(accessKey) && builder.Environment.IsDevelopment())
     builder.Configuration["Security:AccessKey"] = accessKey = DevelopmentAccess.Key;
 if (string.IsNullOrWhiteSpace(accessKey) || accessKey.Length < 32)
-    throw new InvalidOperationException("Set Security__AccessKey to a random secret of at least 32 characters before starting Loomi.");
+    throw new InvalidOperationException("Set Security__AccessKey, as a variable or as the file secrets/Security__AccessKey under the storage root, to a random secret of at least 32 characters before starting Loomi.");
 if (accessKey == DevelopmentAccess.Key && !builder.Environment.IsDevelopment())
     throw new InvalidOperationException("The built-in development access key cannot be used outside the Development environment. Set Security__AccessKey to a random secret of at least 32 characters.");
 builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(root, "keys"))).SetApplicationName("Loomi");
