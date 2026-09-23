@@ -264,7 +264,7 @@ public class InputTests
             var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Storage:Root"] = root }).Build();
             await using var service = new BrowserSession("default", Options.Create(new BrowserOptions { Headless = true, StableSeconds = 1, GenerationTimeoutSeconds = 20 }), config, launcher);
             var result = await service.RunAsync(Operation.Generate, "compose", paths, null, (_, _) => Task.CompletedTask, default);
-            Assert.True(result.Image.Length > 100);
+            Assert.True(result.Image!.Length > 100);
             Assert.Equal(3, await launcher.Context.Pages[0].Locator("button[aria-label='Remove file']").CountAsync());
             return await launcher.Context.Pages[0].EvaluateAsync<int>("window.submission.files");
         }

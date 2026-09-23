@@ -78,6 +78,8 @@ public class DispatchFactory(IChromiumLauncher launcher) : AppFactory
         builder.UseSetting("Browser:GenerationTimeoutSeconds", "60");
         // The fixture's out-of-allowance reply, named the way an owner would name the real one. Without it that reply is an ordinary answer.
         builder.UseSetting("Browser:SpentPhrases:0", "image generation limit");
+        // These tests count browser launches; one per account at start-up would be noise in every one of them.
+        builder.UseSetting("Browser:ConnectOnStart", "false");
         builder.ConfigureServices(services => { services.RemoveAll<IChromiumLauncher>(); services.AddSingleton(launcher); services.AddHostedService<GenerationWorker>(); });
     }
 }

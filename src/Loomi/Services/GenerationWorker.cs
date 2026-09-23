@@ -8,7 +8,8 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 namespace Loomi.Services;
 /// <summary>Spreads the queue over the usable accounts: one run per account at a time, each row given to an account of its own provider and claimed in the database so two accounts can never take the same work.</summary>
-public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry providers, IImageStorage storage, IHubContext<StatusHub> hub, GenerationEvents events, AccountHealth health, ILogger<GenerationWorker> logger) : BackgroundService
+public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry providers, IImageStorage storage, IHubContext<StatusHub> hub, GenerationEvents events, AccountHealth health,
+                              Microsoft.Extensions.Options.IOptions<BrowserOptions> browser, ILogger<GenerationWorker> logger) : BackgroundService
 {
     private static readonly string[] Reportable = ["LoginRequired", "VerificationRequired", "GenerationTimeout", "InvalidImage", "ConversationNotSaved", "NoAccount", "NoImageReturned", "QuotaExceeded", "ContentBlocked", "UploadFailed", "InputMissing"];
     /// <summary>Picked files nobody sent are dropped once a day old; checked hourly, so the check itself costs nothing.</summary>
@@ -37,6 +38,12 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await SweepAsync(stoppingToken);
+        // In the background, so the queue starts moving at once; an account the dispatcher reaches first is simply connected by its own run.
+        if (browser.Value.ConnectOnStart) _ = Task.Run(async () =>
+        {
+            try { using var scope = scopes.CreateScope(); await ConnectAllAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>(), providers, logger, stoppingToken); }
+            catch (OperationCanceledException) { }
+        }, stoppingToken);
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -50,6 +57,18 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
         }
         // Give the runs in flight a moment to notice; a browser that will not let go must not hold up shutdown, and the next sweep repairs whatever it left behind.
         try { await Task.WhenAll(running.Values).WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None); } catch { /* every outcome here is repaired on the next start */ }
+    }
+    /// <summary>Brings every enabled account up, one at a time. One that cannot come up is logged by type and passed over, so it cannot hold the rest back.</summary>
+    public static async Task<int> ConnectAllAsync(AppDbContext db, ProviderRegistry providers, ILogger logger, CancellationToken ct)
+    {
+        var brought = 0;
+        foreach (var account in await db.Accounts.AsNoTracking().Where(a => a.IsEnabled).OrderBy(a => a.CreatedAt).ToListAsync(ct))
+        {
+            try { await providers.For(account.Provider).ConnectAsync(account, ct); brought++; }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex) { logger.LogWarning("Account {AccountId} could not be brought up on start ({Type})", account.Id, ex.GetType().Name); }
+        }
+        return brought;
     }
     /// <summary>Anything mid-run when the process stopped has no browser behind it any more, and its project status has to match.</summary>
     private async Task SweepAsync(CancellationToken ct)

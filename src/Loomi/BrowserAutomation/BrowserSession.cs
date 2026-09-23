@@ -109,7 +109,8 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             if (page == null || page.IsClosed) { state = "Disconnected"; return; }
             if (await Visible(settings.Selectors.Challenge).CountAsync() > 0) state = "VerificationRequired";
             else if (await Visible(settings.Selectors.LoggedOut).CountAsync() > 0) state = "LoginRequired";
-            else if (await Visible(settings.Selectors.LoggedIn).CountAsync() > 0 && await Visible(settings.Selectors.Composer).CountAsync() > 0) state = "Connected";
+            // While the model waits for an answer the site takes the composer away and shows its question instead; that page is just as signed in.
+            else if (await Visible(settings.Selectors.LoggedIn).CountAsync() > 0 && await Visible($"{settings.Selectors.Composer}, {settings.Selectors.QuestionForm}").CountAsync() > 0) state = "Connected";
             else state = "LoginRequired";
         }
         catch (PlaywrightException) { state = "Disconnected"; }
@@ -126,7 +127,7 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             // there would answer the person with none of what came before, so that is refused rather than done quietly.
             var continuing = operation is Operation.Edit or Operation.Reply && conversation != null;
             await NavigateAsync(continuing ? conversation! : "https://chatgpt.com/");
-            await Visible(settings.Selectors.Composer).First.WaitForAsync();
+            await Visible($"{settings.Selectors.Composer}, {settings.Selectors.QuestionForm}").First.WaitForAsync();
             if (continuing && !IsConversation(page!.Url)) throw new InvalidOperationException("ConversationNotSaved");
             await DetectAsync();
             if (state != "Connected") throw new InvalidOperationException(state == "VerificationRequired" ? "VerificationRequired" : "LoginRequired");
@@ -138,10 +139,22 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             // outside the assistant message element, so scoping the search there finds nothing however new the image is.
             var imagesBefore = await page.Locator(settings.Selectors.GeneratedImage).CountAsync();
             var pendingBefore = await page.Locator(settings.Selectors.ImagePending).CountAsync();
+            // A question already waiting on this page is the one being answered; only a different one afterwards is a new question.
+            var askedBefore = await QuestionAsync();
             await report(RunStatus.SendingPrompt);
-            await Visible(settings.Selectors.Composer).First.FillAsync(prompt);
-            // Never retry submission: a timeout after clicking may still have accepted the prompt.
-            await Visible(settings.Selectors.Send).First.ClickAsync();
+            // Never retry submission: a timeout after sending may still have accepted the prompt.
+            if (askedBefore != null && await Visible(settings.Selectors.Composer).CountAsync() == 0)
+            {
+                // The model asked and is waiting: the answer goes into the question's own field, as a person would type it there.
+                var field = Visible(settings.Selectors.QuestionForm).First.Locator(settings.Selectors.QuestionInput).First;
+                await field.FillAsync(prompt);
+                await field.PressAsync("Enter");
+            }
+            else
+            {
+                await Visible(settings.Selectors.Composer).First.FillAsync(prompt);
+                await Visible(settings.Selectors.Send).First.ClickAsync();
+            }
             await report(RunStatus.WaitingForResponse);
             var deadline = DateTime.UtcNow.AddSeconds(settings.GenerationTimeoutSeconds);
             string? previous = null, lastWords = null;
@@ -201,6 +214,13 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
                     continue;
                 }
                 var replies = page.Locator(settings.Selectors.Assistant);
+                if (await QuestionAsync() is { } asked && asked != askedBefore)
+                {
+                    // The model is waiting on the person: any preface it wrote reads like progress on its own, so the question is what is handed back.
+                    var preface = await replies.CountAsync() > before ? (await replies.Last.InnerTextAsync()).Trim() : "";
+                    var words = preface.Length > 0 && !preface.Contains(asked) ? preface + "\n\n" + asked : asked;
+                    return new(null, await SettledUrlAsync(ct), words.Length > 8000 ? words[..8000] : words);
+                }
                 if (await replies.CountAsync() > before)
                 {
                     // Words, and nothing in progress: the model has answered in text, whether a question about the prompt, a refusal or anything else.
@@ -241,6 +261,14 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             await WaitForCountAsync(settings.Selectors.UploadReady, attached, ct);
         }
         await page.Locator(settings.Selectors.UploadBusy).First.WaitForAsync(new() { State = WaitForSelectorState.Hidden, Timeout = settings.UploadTimeoutMs });
+    }
+    /// <summary>The question the site is holding the conversation on, or null. Its own controls (the field, Skip, attachments) are not part of it.</summary>
+    private async Task<string?> QuestionAsync()
+    {
+        var forms = Visible(settings.Selectors.QuestionForm);
+        if (await forms.CountAsync() == 0) return null;
+        var text = await forms.Last.EvaluateAsync<string>("f => { const c = f.cloneNode(true); c.querySelectorAll('button, input, textarea, select, svg, [role=status]').forEach(e => e.remove()); return (c.innerText || c.textContent || '').trim(); }");
+        return string.IsNullOrWhiteSpace(text) ? null : text;
     }
     private static bool IsConversation(string url) => Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Host == "chatgpt.com" && uri.AbsolutePath.StartsWith("/c/");
     /// <summary>The conversation's address once the site has settled on it. A fresh chat first carries a client-side id (/c/local-chatgpt:...) that opens

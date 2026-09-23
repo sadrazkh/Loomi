@@ -64,6 +64,42 @@ public class AnsweredTests
         </script></body></html>
         """;
 
+    /// <summary>What the live site does when the model asks before it draws, measured on 2026-09-23: a short preface in the reply, then the composer is
+    /// replaced by a form holding the question, a plain text field and a Skip button. Submitting the field answers the question and the picture follows.
+    /// Opening the thread later shows the same pending question.</summary>
+    public const string QuestionFormPage = """
+        <html><body>
+        <button aria-label="Open profile menu">Me</button>
+        <div id="composer"><textarea id="prompt-textarea"></textarea><button aria-label="Send prompt" onclick="ask()">Send</button></div>
+        <script>
+        function question() {
+          document.querySelector('#composer').hidden = true;
+          const form = document.createElement('form'); form.id = 'question';
+          form.innerHTML = '<div>What colour would you like the cat to be?</div><input placeholder="e.g. orange, black, white"><button type="button">Skip</button>';
+          form.onsubmit = e => { e.preventDefault(); answer(form.querySelector('input').value); };
+          document.body.append(form);
+        }
+        function ask() {
+          history.replaceState({}, '', '/c/question-thread');
+          window.submission = { prompt: document.querySelector('textarea').value };
+          const reply = document.createElement('div'); reply.dataset.markdownTextStyle = 'assistant-message';
+          reply.innerHTML = '<p>I will get the colour first, then create the cat poster.</p>';
+          document.body.append(reply);
+          setTimeout(question, 600);
+        }
+        function answer(value) {
+          window.answered = value;
+          document.querySelector('#question').remove();
+          const gallery = document.createElement('div'); gallery.dataset.testid = 'generated-image-gallery';
+          const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
+          const ctx = canvas.getContext('2d'); ctx.fillStyle = '#e07b22'; ctx.fillRect(0, 0, 256, 256);
+          const image = document.createElement('img'); image.alt = 'Generated image 1'; image.src = canvas.toDataURL('image/png');
+          gallery.append(image); document.body.append(gallery);
+        }
+        if (location.pathname === '/c/question-thread') question();
+        </script></body></html>
+        """;
+
     private static (BrowserSession Session, string Root) Session(FixtureLauncher launcher, int timeout = 60)
     {
         var root = Path.Combine(Path.GetTempPath(), "loomi-answered-" + Guid.NewGuid());
@@ -132,6 +168,39 @@ public class AnsweredTests
             var failure = await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 session.RunAsync(Operation.Reply, "flat, please", [], "https://chatgpt.com/c/gone-conversation", (_, _) => Task.CompletedTask, default));
             Assert.Equal("ConversationNotSaved", failure.Message);
+        }
+        Directory.Delete(root, true);
+    }
+
+    [Fact]
+    public async Task A_question_the_site_asks_in_its_own_form_comes_back_with_the_question_itself()
+    {
+        await using var launcher = new FixtureLauncher { Body = QuestionFormPage };
+        var (session, root) = Session(launcher);
+        await using (session)
+        {
+            var result = await session.RunAsync(Operation.Generate, "a cat poster", [], null, (_, _) => Task.CompletedTask, default);
+            Assert.Null(result.Image);
+            // The preface alone reads like progress; the question is the part the person has to answer.
+            Assert.Contains("What colour would you like the cat to be?", result.ReplyText);
+            Assert.Contains("I will get the colour first", result.ReplyText);
+            Assert.DoesNotContain("Skip", result.ReplyText);
+        }
+        Directory.Delete(root, true);
+    }
+
+    [Fact]
+    public async Task A_reply_to_a_pending_question_goes_into_the_question_and_the_picture_that_follows_comes_back()
+    {
+        await using var launcher = new FixtureLauncher { Body = QuestionFormPage };
+        var (session, root) = Session(launcher);
+        await using (session)
+        {
+            // The composer is gone while the question waits; the answer belongs in the question's own field.
+            var result = await session.RunAsync(Operation.Reply, "orange", [], "https://chatgpt.com/c/question-thread", (_, _) => Task.CompletedTask, default);
+            Assert.Equal("orange", await launcher.Context.Pages[0].EvaluateAsync<string>("window.answered"));
+            Assert.NotNull(result.Image);
+            Assert.EndsWith("/c/question-thread", result.ConversationUrl);
         }
         Directory.Delete(root, true);
     }

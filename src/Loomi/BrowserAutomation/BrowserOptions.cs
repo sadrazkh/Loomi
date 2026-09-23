@@ -26,6 +26,9 @@ public class BrowserOptions
     /// <summary>How long a turn may sit with nothing on the page — no reply, no picture, no stop control, nothing in progress — before it is given up on.
     /// Only reached when the reply and progress hooks have both drifted; it bounds the wait instead of letting it run to the full timeout.</summary>
     public int QuietSeconds { get; set; } = 45;
+    /// <summary>Bring every enabled account up when the server starts. A deployment restarts on every update, and without this each restart left the
+    /// accounts disconnected, with the UI telling everyone to wait, until the owner came back and pressed Connect.</summary>
+    public bool ConnectOnStart { get; set; } = true;
     public Selectors Selectors { get; set; } = new();
 }
 public class Selectors
@@ -43,6 +46,11 @@ public class Selectors
     public string Assistant { get; set; } = "[data-markdown-text-style='assistant-message'], [data-message-author-role='assistant']";
     /// <summary>Signs that a picture is on its way. Measured on the live site: the stop control goes several seconds before the picture lands, and in that
     /// gap only these say the turn is not over. Counted against what was there before sending, since a continued conversation already holds some.</summary>
+    /// <summary>The site's way of asking before it draws: the composer is replaced by a form holding the question and a plain text field to answer in.
+    /// Recognised by that shape rather than by its wording, which follows the account's language.</summary>
+    public string QuestionForm { get; set; } = "form:has(input[type='text']), form:has(input:not([type]))";
+    /// <summary>The answer field inside that form.</summary>
+    public string QuestionInput { get; set; } = "input[type='text'], input:not([type])";
     public string ImagePending { get; set; } = "[data-testid^='image-gen-loading'], [data-testid='generated-image-gallery'], [aria-label*='Generating image'], button[aria-label='Like this image']";
     /// <summary>The site labels a finished picture and also wraps it in a gallery of its own; either hook finds it, and the alt forms survive a rename of the gallery.</summary>
     public string GeneratedImage { get; set; } = "[data-testid='generated-image-gallery'] img, button[data-testid='generated-image-preview'] img, img[alt*='Generated'], img[alt*='generated'], img[alt*='تصویر']";

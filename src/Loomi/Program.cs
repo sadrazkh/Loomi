@@ -125,7 +125,7 @@ app.Use(async (ctx, next) =>
     catch (Exception ex) when (!ctx.Response.HasStarted && ex is not OperationCanceledException)
     { app.Logger.LogError("Request failed ({Type})", ex.GetType().Name); ctx.Response.StatusCode = 500; await ctx.Response.WriteAsJsonAsync(new { error = "ServerError" }); }
 });
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions { OnPrepareResponse = c => StaticCaching.Apply(c.Context.Request.Path.Value ?? "", c.Context.Response.Headers) });
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();

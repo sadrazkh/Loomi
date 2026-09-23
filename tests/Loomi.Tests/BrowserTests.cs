@@ -74,7 +74,7 @@ public class BrowserTests
             var statuses = new List<RunStatus>();
             var generated = await service.RunAsync(Operation.Generate, "initial", [], null, (s, _) => { statuses.Add(s); return Task.CompletedTask; }, default);
             Assert.StartsWith("https://chatgpt.com/c/", generated.ConversationUrl);
-            Assert.True(generated.Image.Length > 100);
+            Assert.True(generated.Image!.Length > 100);
             Assert.Contains(RunStatus.DownloadingImage, statuses);
             var path = Path.Combine(root, "parent.png"); await File.WriteAllBytesAsync(path, generated.Image);
             foreach (var operation in new[] { Operation.Edit, Operation.Branch })
