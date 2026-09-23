@@ -32,11 +32,16 @@ jobs:
         # shipped a Dockerfile that built cleanly but served 502 on /desktop/ at runtime. Start the real
         # image, hit /health from inside the container, and confirm websockify (noVNC, port 6080) is
         # listening. Everything is time-boxed so a hung container fails the job instead of hanging it.
+        #
+        # Development here is deliberate and only relaxes two things (see Program.cs): the session cookie
+        # drops its Secure flag so plain-HTTP curl can send it back, and the OpenAPI document stops being
+        # owner-only. Login still needs the real access key below; nothing about auth itself is weakened.
         run: |
           set -uo pipefail
+          ACCESS_KEY="$(openssl rand -hex 32)"
           docker run -d --name loomi-ci --shm-size=1gb \
-            -e ASPNETCORE_ENVIRONMENT=Production \
-            -e Security__AccessKey="$(openssl rand -hex 32)" \
+            -e ASPNETCORE_ENVIRONMENT=Development \
+            -e Security__AccessKey="$ACCESS_KEY" \
             -e AllowedHosts="localhost;127.0.0.1" \
             loomi:ci
           trap 'docker rm -f loomi-ci >/dev/null 2>&1 || true' EXIT
@@ -64,3 +69,59 @@ jobs:
           fi
 
           echo "Container answered /health and noVNC (6080) is listening."
+
+          # /health and noVNC only prove the HTTP process and websockify are up. Neither one ever asks
+          # Chromium to actually launch on the container's Xvfb display as the non-root "app" user, and
+          # that launch is exactly the thing most likely to break in a container that builds cleanly
+          # (missing libs, a sandbox that user namespaces refuse, a display that never comes up). The only
+          # honest proof is the app's own path: sign in as the owner, create a ChatGPT account, and ask it
+          # to connect. python3 and curl are already in the runtime image (websockify depends on the
+          # former), so no extra tooling is installed just for this check.
+          if ! timeout 220 docker exec -i loomi-ci bash -s -- "$ACCESS_KEY" <<'BROWSERCHECK'
+          set -euo pipefail
+          KEY="$1"
+          BASE="http://127.0.0.1:8080"
+          JAR="$(mktemp)"
+          field() { python3 -c "import json,sys; print(json.load(sys.stdin)['$1'])"; }
+
+          csrf=$(curl -fsS -c "$JAR" -b "$JAR" "$BASE/api/session" | field csrfToken)
+          curl -fsS -c "$JAR" -b "$JAR" -H 'Content-Type: application/json' -H "X-CSRF-TOKEN: $csrf" \
+            -d "{\"username\":\"owner\",\"password\":\"$KEY\"}" "$BASE/api/session/login" >/dev/null
+
+          # A token minted before sign-in does not necessarily survive it; every test in this repo that
+          # signs in re-reads the token afterward instead of assuming the first one still validates.
+          csrf=$(curl -fsS -c "$JAR" -b "$JAR" "$BASE/api/session" | field csrfToken)
+
+          account_id=$(curl -fsS -c "$JAR" -b "$JAR" -H 'Content-Type: application/json' -H "X-CSRF-TOKEN: $csrf" \
+            -d '{"label":"ci-browser-check"}' "$BASE/api/auth/accounts" | field id)
+          echo "Created ChatGPT account $account_id; connecting it (this launches Chromium)..."
+
+          # Not -f here: a failure response is exactly what we need to see, not swallow.
+          response=$(curl -sS --max-time 200 -w '\n%{http_code}' -c "$JAR" -b "$JAR" \
+            -H 'Content-Type: application/json' -H "X-CSRF-TOKEN: $csrf" \
+            -X POST "$BASE/api/auth/accounts/$account_id/connect")
+          code=$(echo "$response" | tail -n1)
+          payload=$(echo "$response" | sed '$d')
+          echo "connect -> HTTP $code: $payload"
+          if [ "$code" != "200" ]; then
+            echo "the connect call itself failed, before any state was even reported" >&2
+            exit 1
+          fi
+
+          state=$(echo "$payload" | field state)
+          echo "Browser state after connect: $state"
+          # LoginRequired, VerificationRequired (a Cloudflare challenge) and Connected all require a real
+          # Chromium that navigated to chatgpt.com; Disconnected or anything else means the browser never
+          # actually came up on this container's display.
+          case "$state" in
+            LoginRequired|VerificationRequired|Connected) exit 0 ;;
+            *) echo "state '$state' does not prove a browser actually launched" >&2; exit 1 ;;
+          esac
+          BROWSERCHECK
+          then
+            echo "::error::The app could not launch a real Chromium session inside the container"
+            docker logs loomi-ci
+            exit 1
+          fi
+
+          echo "Container answered /health, noVNC (6080) is listening, and connecting an account launched a real Chromium session."
