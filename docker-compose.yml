@@ -21,12 +21,14 @@ services:
       Security__KnownProxies__0: ${LOOMI_PROXY_IP:-172.17.0.1}
       ASPNETCORE_ENVIRONMENT: Production
       Storage__Root: /data
-      # Optional. Uncomment and set TELEGRAM_BOT_TOKEN in .env to enable the bot; the app
-      # stays silent about it when unset.
-      # Telegram__BotToken: ${TELEGRAM_BOT_TOKEN}
-      # Optional. Defaults to gemini-3.1-flash-image in appsettings.json; set GEMINI_MODEL in .env only to
-      # name another model Google documents.
-      # Gemini__Model: ${GEMINI_MODEL}
+    # Every other app setting is read from .env under its own name: Telegram__BotToken, Gemini__Model,
+    # Browser__SpentPhrases__0, and above all Browser__Selectors__* when ChatGPT changes its page. Compose
+    # uses .env only for the ${...} above unless it is also handed to the container, which is what this
+    # does; without it, an override written into .env would be silently ignored at exactly the moment it
+    # is needed. The names under environment: above still win. Needs Docker Compose 2.24 or newer.
+    env_file:
+      - path: .env
+        required: false
     volumes:
       - database:/data
       - browser-profiles:/data/profiles

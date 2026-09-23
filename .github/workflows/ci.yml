@@ -26,6 +26,8 @@ jobs:
       - run: dotnet ef migrations has-pending-model-changes --project src/Loomi --no-build
       - run: pwsh src/Loomi/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium
       - run: dotnet test --no-build
+      # The compose file is what the owner runs; a schema or YAML mistake in it should fail here, not on the server.
+      - run: LOOMI_ACCESS_KEY=ci-only-placeholder-key-of-sufficient-length LOOMI_DOMAIN=example.com docker compose --profile caddy config --quiet
       - run: docker build -t loomi:ci .
       - name: Boot the built image and probe /health and noVNC
         # A build that succeeds proves nothing about a container that actually starts: this project once
