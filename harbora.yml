@@ -1,0 +1,9 @@
+# Deploying Loomi to Harbora; see docs/DEPLOY.md, "روی Harbora", for the panel settings this file cannot carry.
+app: loomi
+server: https://platform.irnetfree.info
+build:
+  dockerfile: Dockerfile
+  context: .
+# Committed content only. A working-folder upload would also carry src/Loomi/Storage from local runs: the database and the ChatGPT browser
+# profiles with their sign-in cookies.
+branch: master

@@ -68,16 +68,14 @@ builder.Services.AddRateLimiter(o =>
         ? RateLimitPartition.GetFixedWindowLimiter("token:" + prefix, _ => new() { PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 })
         : RateLimitPartition.GetNoLimiter("session"));
 });
-builder.Services.Configure<ForwardedHeadersOptions>(o =>
-{
-    o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    foreach (var value in builder.Configuration.GetSection("Security:KnownProxies").Get<string[]>() ?? []) o.KnownProxies.Add(IPAddress.Parse(value));
-});
+var trust = TrustedProxies.Read(builder.Configuration);
+builder.Services.Configure<ForwardedHeadersOptions>(o => TrustedProxies.Apply(o, trust));
 builder.Services.Configure<BrowserOptions>(builder.Configuration.GetSection("Browser"));
 builder.Services.Configure<TelegramOptions>(builder.Configuration.GetSection("Telegram"));
 builder.Services.AddSingleton<GenerationEvents>();
 builder.Services.AddSingleton<ITelegramClient, TelegramClient>();
 builder.Services.AddHostedService<TelegramBotWorker>();
+builder.Services.AddSingleton(sp => new InstanceLease(Path.Combine(root, "instance.lease"), Environment.MachineName, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(20), sp.GetRequiredService<ILogger<InstanceLease>>()));
 builder.Services.AddSingleton<BrowserPool>();
 builder.Services.AddSingleton<AccountHealth>();
 builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection("Gemini"));

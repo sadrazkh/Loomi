@@ -1,9 +1,23 @@
+# Read by Docker and by the harbora CLI, which match differently: Docker anchors a plain name at the root and needs **/ for any depth, while
+# harbora matches a plain name as a folder at any depth and cannot match a **/ pattern against the files inside it. Each rule that must hold
+# at any depth is therefore written both ways. Above all Storage: local runs keep the database and the ChatGPT browser profiles, with their
+# sign-in cookies, under src/Loomi/Storage, and none of that may travel to a build server.
 .git
 **/bin
 **/obj
 **/node_modules
 **/Storage
+Storage
 **/wwwroot/dist
+.claude
+.github
+.impeccable
+.vs
+artifacts
+backups
 design-reference
+docs
+scripts
 test-results
+tests
 .env

@@ -1,10 +1,11 @@
+using Loomi.Services;
 using Microsoft.Playwright;
 namespace Loomi.BrowserAutomation;
 public interface IChromiumLauncher
 {
     Task<IBrowserContext> LaunchAsync(string profile, BrowserOptions options);
 }
-public sealed class ChromiumLauncher(ILogger<ChromiumLauncher> logger) : IChromiumLauncher, IDisposable
+public sealed class ChromiumLauncher(InstanceLease lease, ILogger<ChromiumLauncher> logger) : IChromiumLauncher, IDisposable
 {
     private IPlaywright? playwright;
     /// <summary>Browsers to try in order. Playwright's own build first; installed channels only when no explicit executable is configured.</summary>
@@ -12,6 +13,9 @@ public sealed class ChromiumLauncher(ILogger<ChromiumLauncher> logger) : IChromi
         string.IsNullOrWhiteSpace(options.ExecutablePath) ? [null, .. options.Channels] : [null];
     public async Task<IBrowserContext> LaunchAsync(string profile, BrowserOptions options)
     {
+        // A second Loomi on the same volume, the one a platform is about to retire, may still have this profile open.
+        await lease.WaitAsync();
+        if (ProfileLock.ClearForeign(profile, lease.Holder)) logger.LogInformation("Cleared a browser lock left behind by a previous container.");
         playwright ??= await Playwright.CreateAsync();
         PlaywrightException? failure = null;
         foreach (var channel in Candidates(options))
