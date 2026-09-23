@@ -145,7 +145,9 @@ app.MapControllers();
 var openApi = app.MapOpenApi();
 if (!app.Environment.IsDevelopment()) openApi.RequireAuthorization(new AuthorizeAttribute { Roles = nameof(UserRole.Owner) });
 app.MapHub<StatusHub>("/hubs/status").RequireAuthorization();
-app.MapReverseProxy().RequireAuthorization();
+// The desktop is the owner's ChatGPT session itself: anyone who reaches it can read that account's whole history, sign it out or change it.
+// Being signed in to Loomi is not enough, so it is the owner's alone, socket included.
+app.MapReverseProxy().RequireAuthorization(new AuthorizeAttribute { Roles = nameof(UserRole.Owner) });
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/", () => Results.Redirect("/dist/index.html"));
 app.Run();

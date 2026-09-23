@@ -23,7 +23,9 @@ public class AuthController(AppDbContext db, ProviderRegistry providers, Account
     {
         var accounts = await db.Accounts.AsNoTracking().Where(a => a.IsEnabled).ToListAsync(ct);
         var byProvider = accounts.GroupBy(a => a.Provider).Select(g => new { provider = g.Key.ToString(), accounts = g.Count(), connected = g.Count(a => providers.For(a.Provider).StateOf(a) == "Connected") });
-        return Ok(new { ready = accounts.Any(a => providers.For(a.Provider).StateOf(a) == "Connected"), stalled = await StalledAsync(accounts, ct), desktopUrl = await DesktopAsync(), providers = byProvider });
+        // A member is never handed the desktop link: it opens only for the owner, so offering it would be a button that always says no.
+        var desktop = User.IsInRole(nameof(UserRole.Owner)) ? await DesktopAsync() : null;
+        return Ok(new { ready = accounts.Any(a => providers.For(a.Provider).StateOf(a) == "Connected"), stalled = await StalledAsync(accounts, ct), desktopUrl = desktop, providers = byProvider });
     }
     /// <summary>Why nothing is moving, when something is waiting. Silence here is what makes a parked account look like a broken queue.</summary>
     private async Task<string?> StalledAsync(List<ProviderAccount> accounts, CancellationToken ct)
