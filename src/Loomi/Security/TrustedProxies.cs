@@ -17,6 +17,9 @@ public static class TrustedProxies
             : throw new InvalidOperationException($"Security:KnownNetworks holds \"{v}\", which is not a network in CIDR form such as 172.16.0.0/12.")).ToArray();
         return new(proxies, networks);
     }
+    /// <summary>Traefik reports a WebSocket over TLS as X-Forwarded-Proto: wss. The page that opened it was https, and the WebSocket origin check
+    /// compares against the page's origin, so taken as it came it refused every socket: the remote desktop, which is nothing but one, and SignalR's.</summary>
+    public static string PageScheme(string scheme) => scheme switch { "wss" => "https", "ws" => "http", _ => scheme };
     public static void Apply(ForwardedHeadersOptions options, Trust trust)
     {
         options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;

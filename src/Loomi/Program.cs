@@ -110,6 +110,7 @@ using (var scope = app.Services.CreateScope())
     await OwnerBootstrap.EnsureAsync(db, scope.ServiceProvider.GetRequiredService<PasswordService>(), accessKey, root);
 }
 app.UseForwardedHeaders();
+app.Use((ctx, next) => { ctx.Request.Scheme = TrustedProxies.PageScheme(ctx.Request.Scheme); return next(); });
 app.UseWebSockets();
 if (!app.Environment.IsDevelopment()) app.UseHsts();
 app.Use(async (ctx, next) =>

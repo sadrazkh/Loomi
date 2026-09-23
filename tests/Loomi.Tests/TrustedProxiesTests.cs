@@ -42,6 +42,30 @@ public class TrustedProxiesTests
         Assert.Equal(secondPerson, await LoginAsync(factory, "198.51.100.20"));
     }
 
+    /// <summary>Traefik says wss for a WebSocket behind https. Taken as it came, the origin check refused the remote desktop and SignalR alike.</summary>
+    [Theory]
+    [InlineData("https://localhost", "401")]   // past the origin check; refused only because nobody signed in
+    [InlineData("https://evil.example", "403")]
+    public async Task A_socket_the_proxy_calls_wss_is_judged_against_the_https_page_that_opened_it(string origin, string status)
+    {
+        using var factory = new BehindProxy("172.16.0.0/12");
+        var client = factory.Server.CreateWebSocketClient();
+        client.ConfigureRequest = r =>
+        {
+            r.HttpContext.Connection.RemoteIpAddress = IPAddress.Parse("172.28.0.2");
+            r.Headers["X-Forwarded-Proto"] = "wss"; r.Headers["X-Forwarded-For"] = "203.0.113.10"; r.Headers.Origin = origin;
+        };
+        var refused = await Assert.ThrowsAnyAsync<Exception>(() => client.ConnectAsync(new Uri("ws://localhost/hubs/status"), CancellationToken.None));
+        Assert.Contains(status, refused.Message);
+    }
+
+    [Theory]
+    [InlineData("wss", "https")]
+    [InlineData("ws", "http")]
+    [InlineData("https", "https")]
+    [InlineData("http", "http")]
+    public void A_socket_scheme_is_read_as_the_page_scheme(string forwarded, string page) => Assert.Equal(page, TrustedProxies.PageScheme(forwarded));
+
     [Fact]
     public void A_mistyped_network_stops_the_app_and_says_which_value()
     {
