@@ -103,7 +103,7 @@ public class UsersController(AppDbContext db, PasswordService passwords, IImageS
         if (id == Me.Id) return Conflict(new { error = "CannotDeleteSelf" });
         var user = await UserAsync(id, ct);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        if (await db.Generations.AnyAsync(g => g.UserId == id && g.Status != RunStatus.Completed && g.Status != RunStatus.Failed && g.Status != RunStatus.Cancelled, ct)) return Conflict(new { error = "UserBusy" });
+        if (await db.Generations.AnyAsync(g => g.UserId == id && g.Status != RunStatus.Completed && g.Status != RunStatus.Failed && g.Status != RunStatus.Cancelled && g.Status != RunStatus.Answered, ct)) return Conflict(new { error = "UserBusy" });
         var projects = await db.Projects.Where(p => p.UserId == id).Select(p => p.Id).ToListAsync(ct);
         // A generation of theirs inside somebody else's project is that project's history. Re-home it instead of deleting it, or the other user loses a step.
         foreach (var stray in await db.Generations.Include(g => g.Project).Where(g => g.UserId == id && !projects.Contains(g.ProjectId)).ToListAsync(ct)) stray.UserId = stray.Project.UserId;

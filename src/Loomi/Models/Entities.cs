@@ -1,8 +1,10 @@
 namespace Loomi.Models;
 
-public enum Operation { Generate, Edit, Branch }
+/// <summary>Reply continues the same conversation with words of the person's own, and sends no earlier picture back in with it. Appended, as ints are stored.</summary>
+public enum Operation { Generate, Edit, Branch, Reply }
 // Cancelled is appended: the values are stored as integers, so an existing row must keep the number it was written with.
-public enum RunStatus { Queued, OpeningBrowser, OpeningChatGPT, SendingPrompt, WaitingForResponse, GeneratingImage, DownloadingImage, Completed, Failed, Cancelled }
+/// <summary>Answered is a finished turn whose outcome was words rather than a picture: nothing failed, and the person has something to read and reply to.</summary>
+public enum RunStatus { Queued, OpeningBrowser, OpeningChatGPT, SendingPrompt, WaitingForResponse, GeneratingImage, DownloadingImage, Completed, Failed, Cancelled, Answered }
 public enum UserRole { Owner, Member }
 /// <summary>Which service turns a prompt into an image. Stored as an int, so new members are only ever appended.</summary>
 public enum Provider { ChatGPT, Gemini }
@@ -71,6 +73,8 @@ public class Generation
     public Guid? ParentGenerationId { get; set; }
     public string? LocalImagePath { get; set; }
     public string? ConversationUrl { get; set; }
+    /// <summary>What the model said when it answered without a picture. The person's own conversation, returned to them and to nobody else; never logged.</summary>
+    public string? ReplyText { get; set; }
     public Operation Operation { get; set; }
     public RunStatus Status { get; set; } = RunStatus.Queued;
     public string? ErrorMessage { get; set; }

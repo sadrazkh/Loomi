@@ -20,8 +20,8 @@ public static class Credits
     public static async Task<int> RefundAsync(this AppDbContext db, Guid generation, CancellationToken ct)
     {
         var charged = await db.Generations.AsNoTracking().Where(g => g.Id == generation).Select(g => new { g.UserId, g.CreditCost, g.Status }).FirstOrDefaultAsync(ct);
-        // Only work that came to nothing is given back, whoever asks: a delivered image was paid for.
-        if (charged is not { CreditCost: > 0, Status: RunStatus.Failed or RunStatus.Cancelled }) return 0;
+        // Only work that delivered no picture is given back, whoever asks: a delivered image was paid for, and an answer in words was not an image.
+        if (charged is not { CreditCost: > 0, Status: RunStatus.Failed or RunStatus.Cancelled or RunStatus.Answered }) return 0;
         if (await db.CreditEntries.AnyAsync(e => e.GenerationId == generation && e.Kind == CreditKind.Refund, ct)) return 0;
         db.CreditEntries.Add(new CreditEntry { UserId = charged.UserId, Amount = charged.CreditCost, Kind = CreditKind.Refund, GenerationId = generation });
         // The pre-check cannot see a row another caller has yet to commit; the unique index is what actually decides.

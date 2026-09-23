@@ -16,23 +16,37 @@ public class GenerationService(AppDbContext db, IOptions<BrowserOptions> browser
         // Serializable SQLite transaction keeps queue admission and deletion consistent.
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var project = await db.Projects.OwnedBy(viewer).FirstOrDefaultAsync(x => x.Id == projectId, ct) ?? throw new KeyNotFoundException();
-        if (await db.Generations.CountAsync(g => g.Status != RunStatus.Completed && g.Status != RunStatus.Failed && g.Status != RunStatus.Cancelled, ct) >= 25) throw new InvalidOperationException("QueueFull");
+        if (await db.Generations.AsQueryable().Unfinished().CountAsync(ct) >= 25) throw new InvalidOperationException("QueueFull");
         // Refused here rather than silently parked in the queue: a limit is only actionable while the person who hit it is still looking at it.
         if (await db.RemainingAsync(project.UserId, ct) == 0) throw new InvalidOperationException("QuotaExceeded");
         // Work for a provider no account serves would wait for ever, so it is refused while the person can still pick another. A workspace with no
         // accounts at all is a different thing: nothing is connected yet, the queue holds the work, and /api/auth/status is what explains the wait.
         if (await db.Accounts.AnyAsync(a => a.IsEnabled, ct) && !await db.Accounts.AnyAsync(a => a.IsEnabled && a.Provider == provider, ct)) throw new InvalidOperationException("NoAccount");
+        Guid? pinned = null;
         if (parentId != null)
         {
             var parent = await db.Generations.OwnedBy(viewer).FirstOrDefaultAsync(x => x.Id == parentId, ct);
-            if (parent == null || parent.ProjectId != projectId || parent.Status != RunStatus.Completed || parent.LocalImagePath == null) throw new InvalidOperationException("InvalidParent");
+            if (operation == Operation.Reply)
+            {
+                // A reply goes into the thread the turn left behind, on the account that holds it; without both there is nothing to continue.
+                if (parent == null || parent.ProjectId != projectId || parent.Status is not (RunStatus.Completed or RunStatus.Answered) || parent.ConversationUrl == null
+                    || parent.AccountId is not { } holder || !await db.Accounts.AnyAsync(a => a.Id == holder && a.IsEnabled, ct)) throw new InvalidOperationException("NoConversation");
+                pinned = holder;
+            }
+            else
+            {
+                if (parent == null || parent.ProjectId != projectId || parent.Status != RunStatus.Completed || parent.LocalImagePath == null) throw new InvalidOperationException("InvalidParent");
+                // An edit continues the parent's conversation too, so it waits for the account that holds it rather than opening a thread it cannot see.
+                if (operation == Operation.Edit && parent.AccountId is { } holder && parent.ConversationUrl != null && await db.Accounts.AnyAsync(a => a.Id == holder && a.IsEnabled, ct)) pinned = holder;
+            }
         }
-        var ordered = await InputsAsync(viewer, parentId, refs, ct);
+        // A reply sends what the person attached and nothing else: the picture before it is already in the conversation.
+        var ordered = await InputsAsync(viewer, operation == Operation.Reply ? null : parentId, refs, ct);
         if (ordered.Count > browser.Value.MaxInputs) throw new InvalidOperationException("TooManyInputs");
         // One earlier image from the same project is a lineage, so the tree still shows it; several are a set with no single parent.
         if (parentId == null && ordered is [{ SourceGenerationId: { } only }] && await db.Generations.AnyAsync(x => x.Id == only && x.ProjectId == projectId, ct)) parentId = only;
         // The project's user, not the actor: an owner helping out must not spend their own quota or take the work over.
-        var generation = new Generation { ProjectId = projectId, UserId = project.UserId, Provider = provider, Prompt = prompt.Trim(), Operation = operation, ParentGenerationId = parentId, Inputs = ordered };
+        var generation = new Generation { ProjectId = projectId, UserId = project.UserId, Provider = provider, Prompt = prompt.Trim(), Operation = operation, ParentGenerationId = parentId, Inputs = ordered, AccountId = pinned };
         // The owner pays for the provider accounts themselves, so charging them their own credits would be bookkeeping with nothing behind it,
         // and work whose user no longer exists has no balance to spend — the same reasoning the daily quota uses.
         if (await db.Users.AsNoTracking().Where(u => u.Id == project.UserId).Select(u => (UserRole?)u.Role).FirstOrDefaultAsync(ct) == UserRole.Member)

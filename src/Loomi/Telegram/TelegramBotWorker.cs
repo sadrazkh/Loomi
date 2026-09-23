@@ -153,8 +153,12 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
                 inputs.Add(new InputRef(upload, null));
             }
             var project = await ProjectAsync(db, user.Id, ct);
+            // When the model's last word in this chat was a question, the next message is the answer to it and goes into the same conversation.
+            var asked = await db.Generations.AsNoTracking().Where(g => g.ProjectId == project).OrderByDescending(g => g.CreatedAt)
+                .Select(g => new { g.Id, g.Status, g.ConversationUrl }).FirstOrDefaultAsync(ct);
+            var reply = asked is { Status: RunStatus.Answered, ConversationUrl: not null };
             await scope.ServiceProvider.GetRequiredService<GenerationService>()
-                .SubmitAsync(viewer, project, prompt, Provider.ChatGPT, Operation.Generate, null, inputs, ct);
+                .SubmitAsync(viewer, project, prompt, Provider.ChatGPT, reply ? Operation.Reply : Operation.Generate, reply ? asked!.Id : null, inputs, ct);
             await SayAsync(chat, "queued", persian, ct);
         }
         catch (Exception ex) when (ex is InvalidOperationException or KeyNotFoundException)
@@ -186,12 +190,19 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
     /// already in front of them, and a photo arriving unasked for in a chat would be a surprise, not a service.</summary>
     public async Task DeliverAsync(GenerationEvent moved, CancellationToken ct)
     {
-        if (moved.Status is not (RunStatus.Completed or RunStatus.Failed or RunStatus.Cancelled)) return;
+        if (moved.Status is not (RunStatus.Completed or RunStatus.Failed or RunStatus.Cancelled or RunStatus.Answered)) return;
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         if (await db.TelegramLinks.AsNoTracking().Where(l => l.UserId == moved.UserId).Select(l => (long?)l.ChatId).FirstOrDefaultAsync(ct) is not { } chat) return;
         if (!await db.Projects.AsNoTracking().AnyAsync(p => p.Id == moved.ProjectId && p.UserId == moved.UserId && p.Title == BotProject, ct)) return;
         var persian = persianChats.GetValueOrDefault(chat);
+        // The model answered in words: they are the person's to read, and whatever they send next continues that conversation.
+        if (moved.Status == RunStatus.Answered)
+        {
+            var words = string.IsNullOrWhiteSpace(moved.ReplyText) ? BotMessages.Text("Answered", persian) : moved.ReplyText!;
+            await client.SendTextAsync(chat, words.Length > 3900 ? words[..3900] + "…" : words, ct);
+            return;
+        }
         if (moved.Status != RunStatus.Completed || moved.ImagePath == null)
         {
             await client.SendTextAsync(chat, BotMessages.Text(moved.Status == RunStatus.Cancelled ? "Cancelled" : moved.ErrorMessage ?? "AutomationFailed", persian), ct);

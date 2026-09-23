@@ -51,6 +51,8 @@ public static class BotMessages
         ["BrowserClosed"] = ("The browser window closed while it was running. Your credits are back.", "پنجره مرورگر وسط کار بسته شد. اعتبارتان برگشت."),
         ["Interrupted"] = ("The server restarted while it was running. Your credits are back.", "سرور وسط کار دوباره راه‌اندازی شد. اعتبارتان برگشت."),
         ["Cancelled"] = ("Cancelled.", "لغو شد."),
+        ["Answered"] = ("The model replied without a picture. Send your answer and it continues the same conversation.", "مدل بدون تصویر جواب داد. جوابتان را بفرستید تا همان گفت‌وگو ادامه پیدا کند."),
+        ["NoConversation"] = ("That conversation cannot be continued. Send a new description to start a fresh one.", "آن گفت‌وگو قابل ادامه نیست. یک توضیح تازه بفرستید تا گفت‌وگوی جدیدی شروع شود."),
         ["NotFound"] = ("I could not find that.", "آن را پیدا نکردم."),
         ["AutomationFailed"] = ("That did not work. Try again in a moment.", "انجام نشد. کمی بعد دوباره امتحان کنید."),
     };

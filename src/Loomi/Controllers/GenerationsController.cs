@@ -16,6 +16,8 @@ public class GenerationsController(AppDbContext db, GenerationService service, I
     [HttpGet("{id:guid}")] public async Task<IActionResult> Get(Guid id, CancellationToken ct) => Ok(GenerationDto.From(await MineAsync(id, ct)));
     [HttpPost("{id:guid}/edit")] public Task<IActionResult> Edit(Guid id, PromptRequest r, CancellationToken ct) => Submit(id, r, Operation.Edit, ct);
     [HttpPost("{id:guid}/branch")] public Task<IActionResult> Branch(Guid id, PromptRequest r, CancellationToken ct) => Submit(id, r, Operation.Branch, ct);
+    /// <summary>Answers the model in the same conversation, typically after it asked something instead of drawing.</summary>
+    [HttpPost("{id:guid}/reply")] public Task<IActionResult> Reply(Guid id, PromptRequest r, CancellationToken ct) => Submit(id, r, Operation.Reply, ct);
     private async Task<IActionResult> Submit(Guid id, PromptRequest r, Operation operation, CancellationToken ct)
     {
         var parent = await MineAsync(id, ct);

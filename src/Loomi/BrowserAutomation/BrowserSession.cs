@@ -7,8 +7,8 @@ namespace Loomi.BrowserAutomation;
 
 public record ConnectionStatus(string State, bool Busy, string? DesktopUrl) { /// <summary>Set when work is waiting but no account can take it, so a still queue explains itself instead of looking broken.</summary>
     public string? Stalled { get; init; } }
-/// <summary>Null conversation for a provider that has none: an API answers once and leaves no chat to open.</summary>
-public record BrowserResult(byte[] Image, string? ConversationUrl);
+/// <summary>One of a picture or words. Null conversation for a provider that has none: an API answers once and leaves no chat to open.</summary>
+public record BrowserResult(byte[]? Image, string? ConversationUrl, string? ReplyText = null);
 /// <summary>Reports progress and, when first seen, the conversation URL, so a run that later fails still leaves the chat on the row.</summary>
 public delegate Task ReportStatus(RunStatus status, string? conversation = null);
 /// <summary>One ChatGPT account's browser: its own profile, page and gate, so two accounts never wait on each other.</summary>
@@ -122,58 +122,53 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             await report(RunStatus.OpeningBrowser);
             await EnsureAsync();
             await report(RunStatus.OpeningChatGPT);
-            await NavigateAsync(operation == Operation.Edit && conversation != null ? conversation : "https://chatgpt.com/");
+            // Continuing a thread goes back into it. A conversation the site has since dropped lands on the home page instead, and starting a fresh chat
+            // there would answer the person with none of what came before, so that is refused rather than done quietly.
+            var continuing = operation is Operation.Edit or Operation.Reply && conversation != null;
+            await NavigateAsync(continuing ? conversation! : "https://chatgpt.com/");
             await Visible(settings.Selectors.Composer).First.WaitForAsync();
+            if (continuing && !IsConversation(page!.Url)) throw new InvalidOperationException("ConversationNotSaved");
             await DetectAsync();
             if (state != "Connected") throw new InvalidOperationException(state == "VerificationRequired" ? "VerificationRequired" : "LoginRequired");
             ct.ThrowIfCancellationRequested();
             await ClearAttachmentsAsync(ct);
             if (inputs.Count > 0) await AttachAsync(inputs, ct);
-            var before = await page.Locator(settings.Selectors.Assistant).CountAsync();
+            var before = await page!.Locator(settings.Selectors.Assistant).CountAsync();
             // Counted across the page, not inside the reply: the site renders a generated image in the conversation turn,
             // outside the assistant message element, so scoping the search there finds nothing however new the image is.
             var imagesBefore = await page.Locator(settings.Selectors.GeneratedImage).CountAsync();
+            var pendingBefore = await page.Locator(settings.Selectors.ImagePending).CountAsync();
             await report(RunStatus.SendingPrompt);
             await Visible(settings.Selectors.Composer).First.FillAsync(prompt);
             // Never retry submission: a timeout after clicking may still have accepted the prompt.
             await Visible(settings.Selectors.Send).First.ClickAsync();
             await report(RunStatus.WaitingForResponse);
             var deadline = DateTime.UtcNow.AddSeconds(settings.GenerationTimeoutSeconds);
-            string? previous = null;
-            DateTime? stableSince = null, emptySince = null;
+            string? previous = null, lastWords = null;
+            DateTime? stableSince = null, wordsSince = null, quietSince = null;
             bool announced = false, urlSeen = false, sawStop = false;
             while (DateTime.UtcNow < deadline)
             {
                 await Task.Delay(1500, ct);
-                if (!urlSeen && Uri.TryCreate(page.Url, UriKind.Absolute, out var observed) && observed.Host == "chatgpt.com" && observed.AbsolutePath.StartsWith("/c/"))
+                if (!urlSeen && IsConversation(page.Url))
                 {
                     urlSeen = true;
                     await report(announced ? RunStatus.GeneratingImage : RunStatus.WaitingForResponse, page.Url);
                 }
                 var stopping = await Visible(settings.Selectors.Stop).CountAsync() > 0;
                 sawStop |= stopping;
-                // The site no longer marks a message with its author, so a turn is known to be over the way a person sees it: the stop control appeared
-                // while the model worked and has gone again. The old marker is still honoured wherever it exists.
-                var replied = await page.Locator(settings.Selectors.Assistant).CountAsync() > before || (sawStop && !stopping);
                 var images = page.Locator(settings.Selectors.GeneratedImage);
                 var image = images.Last;
-                if (await images.CountAsync() <= imagesBefore || !await image.IsVisibleAsync())
+                if (await images.CountAsync() > imagesBefore && await image.IsVisibleAsync())
                 {
-                    // A reply that has finished and brought no new image is an answer, not a delay: an account limit,
-                    // a refusal, or plain text. Waiting out the timeout tells the caller nothing it can act on.
-                    if (!replied || stopping) { emptySince = null; continue; }
-                    emptySince ??= DateTime.UtcNow;
-                    if ((DateTime.UtcNow - emptySince.Value).TotalSeconds < settings.StableSeconds) continue;
-                    throw new InvalidOperationException("NoImageReturned");
-                }
-                emptySince = null;
-                if (!announced) { await report(RunStatus.GeneratingImage); announced = true; }
-                var source = await image.EvaluateAsync<string>("el => el.complete && el.naturalWidth >= 256 && el.naturalHeight >= 256 ? el.currentSrc : ''");
-                if (string.IsNullOrEmpty(source) || stopping) { stableSince = null; continue; }
-                if (source != previous || stableSince == null) { previous = source; stableSince = DateTime.UtcNow; continue; }
-                if ((DateTime.UtcNow - stableSince.Value).TotalSeconds < settings.StableSeconds) continue;
-                await report(RunStatus.DownloadingImage);
-                // Read only the rendered image resource in its browser origin; no private API calls.
+                    quietSince = null;
+                    if (!announced) { await report(RunStatus.GeneratingImage); announced = true; }
+                    var source = await image.EvaluateAsync<string>("el => el.complete && el.naturalWidth >= 256 && el.naturalHeight >= 256 ? el.currentSrc : ''");
+                    if (string.IsNullOrEmpty(source) || stopping) { stableSince = null; continue; }
+                    if (source != previous || stableSince == null) { previous = source; stableSince = DateTime.UtcNow; continue; }
+                    if ((DateTime.UtcNow - stableSince.Value).TotalSeconds < settings.StableSeconds) continue;
+                    await report(RunStatus.DownloadingImage);
+                    // Read only the rendered image resource in its browser origin; no private API calls.
                 var base64 = await image.EvaluateAsync<string>("""
                     async el => {
                       const src = el.currentSrc || el.src;
@@ -194,9 +189,34 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
                       return await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result.split(',')[1]); r.onerror = reject; r.readAsDataURL(blob); });
                     }
                     """);
-                var url = page.Url;
-                if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Host != "chatgpt.com" || !uri.AbsolutePath.StartsWith("/c/")) throw new InvalidOperationException("ConversationNotSaved");
-                return new(Convert.FromBase64String(base64), url);
+                    return new(Convert.FromBase64String(base64), await SettledUrlAsync(ct));
+                }
+                // No picture yet. One still on its way keeps the turn open however quiet the rest of the page is: on the live site the stop control
+                // goes several seconds before the picture lands, and judging the turn over at that moment is what made successes a matter of luck.
+                var pending = await page.Locator(settings.Selectors.ImagePending).CountAsync() > pendingBefore;
+                if (stopping || pending)
+                {
+                    wordsSince = null; quietSince = null;
+                    if (pending && !announced) { await report(RunStatus.GeneratingImage); announced = true; }
+                    continue;
+                }
+                var replies = page.Locator(settings.Selectors.Assistant);
+                if (await replies.CountAsync() > before)
+                {
+                    // Words, and nothing in progress: the model has answered in text, whether a question about the prompt, a refusal or anything else.
+                    // They are taken once they stop changing, so a reply still streaming is not cut short, and handed back to the person who asked.
+                    var words = (await replies.Last.InnerTextAsync()).Trim();
+                    if (words.Length == 0 || words != lastWords) { lastWords = words; wordsSince = DateTime.UtcNow; continue; }
+                    if ((DateTime.UtcNow - wordsSince!.Value).TotalSeconds < settings.StableSeconds) continue;
+                    if (settings.SpentPhrases.Any(phrase => !string.IsNullOrWhiteSpace(phrase) && words.Contains(phrase.Trim(), StringComparison.OrdinalIgnoreCase)))
+                        throw new InvalidOperationException("NoImageReturned");
+                    return new(null, await SettledUrlAsync(ct), words.Length > 8000 ? words[..8000] : words);
+                }
+                // Nothing to read and nothing in progress after the model had visibly started: the hooks have drifted. Bounded, so a run cannot sit
+                // for the whole timeout on a page that will never say anything the selectors understand.
+                if (!sawStop) continue;
+                quietSince ??= DateTime.UtcNow;
+                if ((DateTime.UtcNow - quietSince.Value).TotalSeconds >= settings.QuietSeconds) throw new InvalidOperationException("NoImageReturned");
             }
             throw new InvalidOperationException("GenerationTimeout");
         }
@@ -221,6 +241,15 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             await WaitForCountAsync(settings.Selectors.UploadReady, attached, ct);
         }
         await page.Locator(settings.Selectors.UploadBusy).First.WaitForAsync(new() { State = WaitForSelectorState.Hidden, Timeout = settings.UploadTimeoutMs });
+    }
+    private static bool IsConversation(string url) => Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Host == "chatgpt.com" && uri.AbsolutePath.StartsWith("/c/");
+    /// <summary>The conversation's address once the site has settled on it. A fresh chat first carries a client-side id (/c/local-chatgpt:...) that opens
+    /// the home page if it is ever visited again, so a reply saved against it would lose its thread; the real id arrives a few seconds later.</summary>
+    private async Task<string> SettledUrlAsync(CancellationToken ct)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        while (page!.Url.Contains("local-", StringComparison.OrdinalIgnoreCase) && DateTime.UtcNow < deadline) await Task.Delay(500, ct);
+        return IsConversation(page.Url) ? page.Url : throw new InvalidOperationException("ConversationNotSaved");
     }
     /// <summary>Drops anything a previous run left in the composer. Loomi is the only thing driving this browser, so a leftover attachment is never
     /// something a person meant to keep, and sending it would put an unasked-for picture into somebody else's prompt.</summary>

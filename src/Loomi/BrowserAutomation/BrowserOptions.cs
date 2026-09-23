@@ -19,6 +19,13 @@ public class BrowserOptions
     public int MaxInputs { get; set; } = 4;
     /// <summary>How long the site may take to show every attachment as ready before the run gives up on it.</summary>
     public int UploadTimeoutMs { get; set; } = 60000;
+    /// <summary>Phrases the owner has seen the site use when an account's image allowance is spent. A reply containing one moves the work to another
+    /// account, as before; any other reply without a picture is returned to the person as an answer. Empty by default: guessing the site's wording would
+    /// turn somebody's genuine question into a silent retry elsewhere, which is the very thing this exists to stop.</summary>
+    public string[] SpentPhrases { get; set; } = [];
+    /// <summary>How long a turn may sit with nothing on the page — no reply, no picture, no stop control, nothing in progress — before it is given up on.
+    /// Only reached when the reply and progress hooks have both drifted; it bounds the wait instead of letting it run to the full timeout.</summary>
+    public int QuietSeconds { get; set; } = 45;
     public Selectors Selectors { get; set; } = new();
 }
 public class Selectors
@@ -32,7 +39,11 @@ public class Selectors
     public string Challenge { get; set; } = "#challenge-form, #challenge-running, #cf-chl-widget, iframe[src*='challenges.cloudflare.com']";
     public string Send { get; set; } = "[data-testid='send-button'], button[aria-label='Send prompt'], button[aria-label^='Send']";
     public string Stop { get; set; } = "[data-testid='stop-button'], button[aria-label='Stop streaming'], button[aria-label^='Stop streaming']";
-    public string Assistant { get; set; } = "[data-message-author-role='assistant']";
+    /// <summary>A reply in words. The site marks it only by its markdown style now; the author marker it used to carry is kept in case it returns.</summary>
+    public string Assistant { get; set; } = "[data-markdown-text-style='assistant-message'], [data-message-author-role='assistant']";
+    /// <summary>Signs that a picture is on its way. Measured on the live site: the stop control goes several seconds before the picture lands, and in that
+    /// gap only these say the turn is not over. Counted against what was there before sending, since a continued conversation already holds some.</summary>
+    public string ImagePending { get; set; } = "[data-testid^='image-gen-loading'], [data-testid='generated-image-gallery'], [aria-label*='Generating image'], button[aria-label='Like this image']";
     /// <summary>The site labels a finished picture and also wraps it in a gallery of its own; either hook finds it, and the alt forms survive a rename of the gallery.</summary>
     public string GeneratedImage { get; set; } = "[data-testid='generated-image-gallery'] img, button[data-testid='generated-image-preview'] img, img[alt*='Generated'], img[alt*='generated'], img[alt*='تصویر']";
     public string FileInput { get; set; } = "input[type='file']";

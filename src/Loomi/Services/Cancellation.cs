@@ -6,7 +6,7 @@ namespace Loomi.Services;
 public static class Cancellation
 {
     public static IQueryable<Generation> Unfinished(this IQueryable<Generation> generations) =>
-        generations.Where(g => g.Status != RunStatus.Completed && g.Status != RunStatus.Failed && g.Status != RunStatus.Cancelled);
+        generations.Where(g => g.Status != RunStatus.Completed && g.Status != RunStatus.Failed && g.Status != RunStatus.Cancelled && g.Status != RunStatus.Answered);
     /// <summary>A queued row is simply written; one already running has to be interrupted, and the run itself records the outcome.</summary>
     public static async Task<Generation> CancelAsync(AppDbContext db, Generation g, CancellationToken ct)
     {

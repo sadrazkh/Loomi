@@ -30,6 +30,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<Generation>().HasIndex(x => new { x.UserId, x.CreatedAt });
         b.Entity<Generation>().HasIndex(x => new { x.AccountId, x.CreatedAt });
         b.Entity<Generation>().Property(x => x.Prompt).HasMaxLength(12000);
+        b.Entity<Generation>().Property(x => x.ReplyText).HasMaxLength(8000);
         b.Entity<Generation>().HasOne(x => x.Project).WithMany(x => x.Generations).HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Generation>().HasOne<Generation>().WithMany().HasForeignKey(x => x.ParentGenerationId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<Generation>().HasIndex(x => new { x.Status, x.CreatedAt });

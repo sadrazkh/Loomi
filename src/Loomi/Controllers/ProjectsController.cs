@@ -40,7 +40,7 @@ public class ProjectsController(AppDbContext db, ProjectRepository projects, Gen
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var project = await db.Projects.OwnedBy(Me).FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new KeyNotFoundException();
-        if (await db.Generations.AnyAsync(g => g.ProjectId == id && g.Status != RunStatus.Completed && g.Status != RunStatus.Failed && g.Status != RunStatus.Cancelled, ct)) throw new InvalidOperationException("ProjectBusy");
+        if (await db.Generations.AnyAsync(g => g.ProjectId == id && g.Status != RunStatus.Completed && g.Status != RunStatus.Failed && g.Status != RunStatus.Cancelled && g.Status != RunStatus.Answered, ct)) throw new InvalidOperationException("ProjectBusy");
         await db.Generations.Where(g => g.ProjectId == id).ExecuteUpdateAsync(s => s.SetProperty(g => g.ParentGenerationId, (Guid?)null), ct);
         db.Projects.Remove(project); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
         storage.DeleteProject(id); return NoContent();

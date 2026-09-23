@@ -180,6 +180,10 @@ namespace Loomi.Data.Migrations
                     b.Property<int>("Provider")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ReplyText")
+                        .HasMaxLength(8000)
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("Status")
                         .HasColumnType("INTEGER");
 
