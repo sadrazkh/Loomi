@@ -271,8 +271,11 @@ public class AnsweredTests
         Assert.Contains("Which style do you want", first.ReplyText);
         Assert.Null(first.ErrorMessage);
         Assert.EndsWith("/c/fixture-conversation", first.ConversationUrl);
-        // No picture was delivered, so nothing is kept for it.
-        Assert.Equal(100, await WithDbAsync(factory, db => db.BalanceAsync(sara, default)));
+        // No picture was delivered, so nothing is kept for it. The refund is written just after the status, so it is waited for, not raced: read
+        // in between, under a full parallel run, the balance was sometimes still 90.
+        var balance = 0;
+        for (var deadline = DateTime.UtcNow.AddSeconds(10); DateTime.UtcNow < deadline && (balance = await WithDbAsync(factory, db => db.BalanceAsync(sara, default))) != 100;) await Task.Delay(100);
+        Assert.Equal(100, balance);
         var dto = await client.GetFromJsonAsync<JsonElement>($"/api/generations/{first.Id}");
         Assert.Equal("Answered", dto.GetProperty("status").GetString());
         Assert.Contains("flat or photographic?", dto.GetProperty("replyText").GetString());
