@@ -29,7 +29,9 @@ COPY deploy/entrypoint.sh /entrypoint.sh
 RUN sed -i 's/\r$//' /entrypoint.sh && chmod 755 /entrypoint.sh
 USER app
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=5s CMD curl -fsS http://localhost:8080/health || exit 1
+# No Host header, which HTTP/1.0 allows and the host filter lets through: the check must not depend on AllowedHosts. With the name "localhost" it
+# failed wherever AllowedHosts named only the public domain, as on Harbora, and the container read "unhealthy" while serving perfectly.
+HEALTHCHECK --interval=30s --timeout=5s CMD curl -fsS --http1.0 -H "Host:" http://127.0.0.1:8080/health || exit 1
 # tini reaps what Chromium orphans and passes the stop signal on; Harbora starts the container with no init of its own. -s keeps it
 # working under Compose's init: true as well, where it is not PID 1.
 ENTRYPOINT ["/usr/bin/tini", "-s", "--", "/entrypoint.sh"]
