@@ -29,6 +29,9 @@ public class FakeTelegram : ITelegramClient
     public Task SendPhotoAsync(long chat, byte[] photo, string name, string? caption, CancellationToken ct) { Photos.Add((chat, photo, name, caption)); return Task.CompletedTask; }
     public Task<byte[]?> DownloadAsync(string fileId, long maxBytes, CancellationToken ct) =>
         Task.FromResult(Files.TryGetValue(fileId, out var bytes) && bytes.Length <= maxBytes ? bytes : null);
+    /// <summary>A token Telegram would recognise, in this fake, is one that starts with the bot id the tests use.</summary>
+    public const string GoodToken = "123456:TEST-token", BotName = "loomi_test_bot";
+    public Task<string?> WhoAmIAsync(string token, CancellationToken ct) => Task.FromResult(token == GoodToken ? BotName : null);
 }
 public class TelegramTests
 {
@@ -38,7 +41,10 @@ public class TelegramTests
     private static TelegramBotWorker WorkerFor(AppFactory factory, FakeTelegram bot) => new(
         factory.Services.GetRequiredService<IServiceScopeFactory>(), bot, factory.Services.GetRequiredService<GenerationEvents>(),
         Options.Create(new TelegramOptions { BotToken = "test-token", MediaGroupMs = 1500 }),
-        Options.Create(new BrowserOptions()), NullLogger<TelegramBotWorker>.Instance);
+        Options.Create(new BrowserOptions()), ConfiguredBot(factory), NullLogger<TelegramBotWorker>.Instance);
+    /// <summary>A bot set in configuration, the way a deployment without the in-app setting has one.</summary>
+    public static BotSettings ConfiguredBot(AppFactory factory) => new(factory.Services.GetRequiredService<IServiceScopeFactory>(),
+        factory.Services.GetRequiredService<Loomi.Security.AccountSecrets>(), Options.Create(new TelegramOptions { BotToken = "test-token" }));
     private static Message Text(string text, long chat = Chat, string? language = null) =>
         new() { Chat = new() { Id = chat }, From = new() { Id = 1, FirstName = "u", LanguageCode = language }, Text = text };
     private static Message Photo(string fileId, string? caption = null, string? group = null, long chat = Chat) =>
@@ -262,7 +268,7 @@ public class TelegramTests
     {
         using var factory = new TelegramFactory(); var bot = new FakeTelegram();
         var worker = new TelegramBotWorker(factory.Services.GetRequiredService<IServiceScopeFactory>(), bot, factory.Services.GetRequiredService<GenerationEvents>(),
-            factory.Services.GetRequiredService<IOptions<TelegramOptions>>(), Options.Create(new BrowserOptions()), NullLogger<TelegramBotWorker>.Instance);
+            factory.Services.GetRequiredService<IOptions<TelegramOptions>>(), Options.Create(new BrowserOptions()), factory.Services.GetRequiredService<BotSettings>(), NullLogger<TelegramBotWorker>.Instance);
         await MemberAsync(factory, "sara");
         using var client = await SignInAsync(factory, "sara", "sara-strong-pass");
         var issued = await client.PostAsync("/api/telegram/link", null);

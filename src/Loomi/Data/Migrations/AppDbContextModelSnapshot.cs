@@ -60,6 +60,22 @@ namespace Loomi.Data.Migrations
                     b.ToTable("ApiTokens");
                 });
 
+            modelBuilder.Entity("Loomi.Models.AppSetting", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("Settings");
+                });
+
             modelBuilder.Entity("Loomi.Models.AppUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -160,6 +176,10 @@ namespace Loomi.Data.Migrations
                     b.Property<string>("ErrorMessage")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("HiddenPrompt")
+                        .HasMaxLength(8000)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("LocalImagePath")
                         .HasColumnType("TEXT");
 
@@ -186,6 +206,13 @@ namespace Loomi.Data.Migrations
 
                     b.Property<int>("Status")
                         .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("TemplateId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TemplateTitle")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("TEXT");
@@ -308,6 +335,67 @@ namespace Loomi.Data.Migrations
                     b.ToTable("PricingRules");
                 });
 
+            modelBuilder.Entity("Loomi.Models.PromptTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Instructions")
+                        .HasMaxLength(400)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MaxInputs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MinInputs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Prompt")
+                        .IsRequired()
+                        .HasMaxLength(8000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Provider")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("SampleGenerationId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SamplePath")
+                        .HasMaxLength(400)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("SendSample")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId", "Order");
+
+                    b.ToTable("Templates");
+                });
+
             modelBuilder.Entity("Loomi.Models.ProviderAccount", b =>
                 {
                     b.Property<Guid>("Id")
@@ -379,6 +467,28 @@ namespace Loomi.Data.Migrations
                     b.ToTable("TelegramLinks");
                 });
 
+            modelBuilder.Entity("Loomi.Models.TemplateCategory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("TemplateCategories");
+                });
+
             modelBuilder.Entity("Loomi.Models.Upload", b =>
                 {
                     b.Property<Guid>("Id")
@@ -433,6 +543,15 @@ namespace Loomi.Data.Migrations
                         .WithMany("Inputs")
                         .HasForeignKey("GenerationId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Loomi.Models.PromptTemplate", b =>
+                {
+                    b.HasOne("Loomi.Models.TemplateCategory", null)
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

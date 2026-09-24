@@ -214,7 +214,7 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
             try
             {
                 Generation? parent = g.ParentGenerationId == null ? null : await db.Generations.FindAsync([g.ParentGenerationId.Value], ct);
-                var request = new GenerationRequest(account.Provider, g.Operation, g.Prompt, await InputPathsAsync(db, g, parent, ct), parent?.ConversationUrl);
+                var request = new GenerationRequest(account.Provider, g.Operation, TemplateService.PromptFor(g), await InputPathsAsync(db, g, parent, ct), parent?.ConversationUrl);
                 var result = await providers.For(account.Provider).RunAsync(account, request, Report, ct);
                 // A provider without a conversation leaves the project's last link alone rather than blanking it.
                 if (result.ConversationUrl != null) { g.ConversationUrl = result.ConversationUrl; g.Project.ConversationUrl = result.ConversationUrl; }

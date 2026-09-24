@@ -15,6 +15,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
     public DbSet<TelegramLink> TelegramLinks => Set<TelegramLink>();
     public DbSet<LinkCode> LinkCodes => Set<LinkCode>();
+    public DbSet<TemplateCategory> TemplateCategories => Set<TemplateCategory>();
+    public DbSet<PromptTemplate> Templates => Set<PromptTemplate>();
+    public DbSet<AppSetting> Settings => Set<AppSetting>();
     // No global query filter on UserId: the dispatcher runs without a user and would silently read an empty database.
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -53,5 +56,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<TelegramLink>().HasIndex(x => x.UserId).IsUnique();
         b.Entity<LinkCode>().HasKey(x => x.Code);
         b.Entity<LinkCode>().Property(x => x.Code).HasMaxLength(16);
+        b.Entity<Generation>().Property(x => x.TemplateTitle).HasMaxLength(80);
+        b.Entity<Generation>().Property(x => x.HiddenPrompt).HasMaxLength(8000);
+        b.Entity<TemplateCategory>().Property(x => x.Name).HasMaxLength(64);
+        b.Entity<PromptTemplate>().Property(x => x.Title).HasMaxLength(80);
+        b.Entity<PromptTemplate>().Property(x => x.Instructions).HasMaxLength(400);
+        b.Entity<PromptTemplate>().Property(x => x.Prompt).HasMaxLength(8000);
+        b.Entity<PromptTemplate>().Property(x => x.SamplePath).HasMaxLength(400);
+        // A category is removed only once it is empty, so a template is never left without one.
+        b.Entity<PromptTemplate>().HasOne<TemplateCategory>().WithMany().HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<PromptTemplate>().HasIndex(x => new { x.CategoryId, x.Order });
+        b.Entity<AppSetting>().HasKey(x => x.Key);
+        b.Entity<AppSetting>().Property(x => x.Key).HasMaxLength(64);
+        b.Entity<AppSetting>().Property(x => x.Value).HasMaxLength(4000);
     }
 }

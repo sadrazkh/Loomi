@@ -109,7 +109,7 @@ public class OwnerAlertTests
         var bot = new FakeTelegram();
         var events = factory.Services.GetRequiredService<GenerationEvents>();
         var worker = new OwnerAlertWorker(factory.Services.GetRequiredService<IServiceScopeFactory>(), factory.Services.GetRequiredService<ProviderRegistry>(),
-            factory.Services.GetRequiredService<AccountHealth>(), events, bot, Options.Create(new TelegramOptions { BotToken = "test-token" }), NullLogger<OwnerAlertWorker>.Instance);
+            factory.Services.GetRequiredService<AccountHealth>(), events, bot, TelegramTests.ConfiguredBot(factory), NullLogger<OwnerAlertWorker>.Instance);
         await worker.StartAsync(CancellationToken.None);
         try
         {

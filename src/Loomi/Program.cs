@@ -79,6 +79,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(o => TrustedProxies.Apply(o,
 builder.Services.Configure<BrowserOptions>(builder.Configuration.GetSection("Browser"));
 builder.Services.Configure<TelegramOptions>(builder.Configuration.GetSection("Telegram"));
 builder.Services.AddSingleton<GenerationEvents>();
+builder.Services.AddSingleton<BotSettings>();
 builder.Services.AddSingleton<ITelegramClient, TelegramClient>();
 builder.Services.AddHostedService<TelegramBotWorker>();
 builder.Services.AddHostedService<OwnerAlertWorker>();
@@ -97,6 +98,7 @@ builder.Services.AddSingleton<IImageStorage, ImageStorage>();
 builder.Services.AddSingleton<PasswordService>();
 builder.Services.AddScoped<ProjectRepository>();
 builder.Services.AddScoped<GenerationService>();
+builder.Services.AddScoped<TemplateService>();
 builder.Services.AddHostedService<GenerationWorker>();
 builder.Services.AddReverseProxy().LoadFromMemory(
     [new RouteConfig { RouteId = "desktop", ClusterId = "desktop", Match = new() { Path = "/desktop/{**rest}" }, Transforms = [new Dictionary<string,string> { ["PathRemovePrefix"] = "/desktop" }, new Dictionary<string,string> { ["RequestHeaderRemove"] = "Cookie" }] }],
@@ -111,6 +113,7 @@ using (var scope = app.Services.CreateScope())
     await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
     await OwnerBootstrap.EnsureAsync(db, scope.ServiceProvider.GetRequiredService<PasswordService>(), accessKey, root);
 }
+await app.Services.GetRequiredService<BotSettings>().LoadAsync(CancellationToken.None);
 app.UseForwardedHeaders();
 app.Use((ctx, next) => { ctx.Request.Scheme = TrustedProxies.PageScheme(ctx.Request.Scheme); return next(); });
 app.UseWebSockets();
@@ -127,7 +130,7 @@ app.Use(async (ctx, next) =>
     if (ctx.WebSockets.IsWebSocketRequest && ctx.Request.Headers.Origin.ToString() != $"{ctx.Request.Scheme}://{ctx.Request.Host}") { ctx.Response.StatusCode = 403; return; }
     try { await next(); }
     catch (KeyNotFoundException) { ctx.Response.StatusCode = 404; await ctx.Response.WriteAsJsonAsync(new { error = "NotFound" }); }
-    catch (InvalidOperationException ex) when (new[] { "BrowserBusy", "QueueFull", "InvalidParent", "InvalidPrompt", "ProjectBusy", "NoAccount", "QuotaExceeded", "InsufficientCredits", "TooManyInputs", "InvalidInput", "UploadInUse", "NoConversation", "AlreadyLinked", "TelegramNotConfigured" }.Contains(ex.Message))
+    catch (InvalidOperationException ex) when (new[] { "BrowserBusy", "QueueFull", "InvalidParent", "InvalidPrompt", "ProjectBusy", "NoAccount", "QuotaExceeded", "InsufficientCredits", "TooManyInputs", "InvalidInput", "UploadInUse", "NoConversation", "AlreadyLinked", "TelegramNotConfigured", "TemplateInputs", "CategoryNotEmpty" }.Contains(ex.Message))
     { ctx.Response.StatusCode = 409; await ctx.Response.WriteAsJsonAsync(new { error = ex.Message }); }
     catch (Exception ex) when (!ctx.Response.HasStarted && ex is not OperationCanceledException)
     { app.Logger.LogError("Request failed ({Type})", ex.GetType().Name); ctx.Response.StatusCode = 500; await ctx.Response.WriteAsJsonAsync(new { error = "ServerError" }); }

@@ -79,6 +79,48 @@ public class Generation
     public RunStatus Status { get; set; } = RunStatus.Queued;
     public string? ErrorMessage { get; set; }
     public List<GenerationInput> Inputs { get; set; } = [];
+    /// <summary>The template this was made from, and its title as it read then, so the history still says what was chosen after a template is renamed or deleted.</summary>
+    public Guid? TemplateId { get; set; }
+    public string? TemplateTitle { get; set; }
+    /// <summary>The template's prompt, sent ahead of <see cref="Prompt"/> and never shown: Prompt stays what the person wrote themselves, which is all
+    /// that reaches their history, the live updates and the bot.</summary>
+    public string? HiddenPrompt { get; set; }
+}
+/// <summary>A heading templates are grouped under, in the order the owner chose.</summary>
+public class TemplateCategory
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "";
+    public int Order { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+/// <summary>A ready-made look: a sample people choose by, and the owner's prompt that makes it, which only the owner ever reads.</summary>
+public class PromptTemplate
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CategoryId { get; set; }
+    public string Title { get; set; } = "";
+    /// <summary>What the person is asked to send, in the owner's words: "one clear photo of both faces".</summary>
+    public string? Instructions { get; set; }
+    public string Prompt { get; set; } = "";
+    public Provider Provider { get; set; } = Provider.ChatGPT;
+    public int MinInputs { get; set; } = 1;
+    public int MaxInputs { get; set; } = 1;
+    /// <summary>Sends the sample along as a style reference. Off by default: for a portrait it can carry the sample's face into the result.</summary>
+    public bool SendSample { get; set; }
+    public string? SamplePath { get; set; }
+    /// <summary>A sample being made from the prompt; adopted as <see cref="SamplePath"/> once it completes.</summary>
+    public Guid? SampleGenerationId { get; set; }
+    public bool IsActive { get; set; } = true;
+    public int Order { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+/// <summary>A workspace setting the owner changes from the app itself. A secret is sealed before it is stored here.</summary>
+public class AppSetting
+{
+    public string Key { get; set; } = "";
+    public string Value { get; set; } = "";
 }
 /// <summary>A file a user uploaded to feed into a generation, held until it is used or swept.</summary>
 public class Upload

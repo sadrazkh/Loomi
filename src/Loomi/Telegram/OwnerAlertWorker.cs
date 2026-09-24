@@ -8,17 +8,16 @@ namespace Loomi.Telegram;
 /// <summary>Tells the owner on Telegram when the accounts need a person, before a tester notices the queue has stopped. Goes only to chats linked to an
 /// owner, in both languages, since the bot learns a chat's language only from a message and an alert has none behind it. Silent without a bot token.</summary>
 public class OwnerAlertWorker(IServiceScopeFactory scopes, ProviderRegistry providers, AccountHealth health, GenerationEvents events, ITelegramClient client,
-                              IOptions<TelegramOptions> telegram, ILogger<OwnerAlertWorker> logger) : BackgroundService
+                              BotSettings bot, ILogger<OwnerAlertWorker> logger) : BackgroundService
 {
     public static readonly TimeSpan Every = TimeSpan.FromSeconds(20);
     private readonly AlertRules rules = new(stallAfter: TimeSpan.FromMinutes(2), quietFor: TimeSpan.FromMinutes(15));
 
-    private bool Enabled => !string.IsNullOrWhiteSpace(telegram.Value.BotToken);
     /// <summary>Listening starts here, before the host moves on: ExecuteAsync runs on a thread of its own, and an outcome published before it got
     /// round to subscribing would be missed.</summary>
     public override Task StartAsync(CancellationToken cancellationToken)
     {
-        if (Enabled) events.Subscribe(OutcomeAsync);
+        events.Subscribe(OutcomeAsync);
         return base.StartAsync(cancellationToken);
     }
     public override Task StopAsync(CancellationToken cancellationToken)
@@ -28,9 +27,10 @@ public class OwnerAlertWorker(IServiceScopeFactory scopes, ProviderRegistry prov
     }
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!Enabled) return;
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Without a bot there is nobody to tell; the owner setting one in the app wakes this.
+            if (!bot.Configured) { try { await bot.Changed.WaitAsync(stoppingToken); } catch (OperationCanceledException) { break; } continue; }
             try { await CheckAsync(DateTime.UtcNow, stoppingToken); }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             catch (Exception ex) { logger.LogWarning("Owner alert check failed ({Type})", ex.GetType().Name); }
@@ -57,7 +57,7 @@ public class OwnerAlertWorker(IServiceScopeFactory scopes, ProviderRegistry prov
     }
     private async Task OutcomeAsync(GenerationEvent moved, CancellationToken ct)
     {
-        if (rules.Outcome(moved.Status, moved.ErrorMessage) is not { } alert) return;
+        if (!bot.Configured || rules.Outcome(moved.Status, moved.ErrorMessage) is not { } alert) return;
         using var scope = scopes.CreateScope();
         await SendAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>(), [alert], ct);
     }

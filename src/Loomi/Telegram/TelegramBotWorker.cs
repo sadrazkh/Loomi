@@ -13,7 +13,7 @@ namespace Loomi.Telegram;
 /// <summary>The bot, in one place. It talks to the same <see cref="GenerationService"/> the web and the API do, so quota, credits and pricing are the
 /// same rules however the work arrived; nothing here calls Loomi's own HTTP surface.</summary>
 public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient client, GenerationEvents events, IOptions<TelegramOptions> telegram,
-                               IOptions<BrowserOptions> browser, ILogger<TelegramBotWorker> logger) : BackgroundService
+                               IOptions<BrowserOptions> browser, BotSettings bot, ILogger<TelegramBotWorker> logger) : BackgroundService
 {
     /// <summary>Everything from a chat lands in this one project, so the bot can tell its own work from the same person's work on the web.</summary>
     public const string BotProject = "Telegram";
@@ -26,24 +26,31 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // No token means the bot is not part of this deployment. Say nothing: an operator who did not configure one does not need a warning every start.
-        if (string.IsNullOrWhiteSpace(settings.BotToken)) return;
         events.Subscribe(DeliverAsync);
         var albumLoop = Task.Run(() => FlushLoopAsync(stoppingToken), stoppingToken);
-        var offset = 0;
         while (!stoppingToken.IsCancellationRequested)
         {
-            try
+            // No token means no bot yet. Say nothing, and wake when the owner sets one: an operator who has not configured one needs no warning every start.
+            var changed = bot.Changed;
+            if (!bot.Configured) { try { await changed.WaitAsync(stoppingToken); } catch (OperationCanceledException) { break; } continue; }
+            // A new token is a new bot: its update numbering starts over, and a long poll held open with the old one is let go at once.
+            using var reset = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            _ = changed.ContinueWith(_ => { try { reset.Cancel(); } catch (ObjectDisposedException) { /* this bot's loop already ended */ } }, TaskScheduler.Default);
+            var offset = 0;
+            while (!reset.IsCancellationRequested)
             {
-                foreach (var update in await client.GetUpdatesAsync(offset, stoppingToken))
+                try
                 {
-                    offset = update.Id + 1;
-                    if (update.Message is { } message) await HandleAsync(message, stoppingToken);
+                    foreach (var update in await client.GetUpdatesAsync(offset, reset.Token))
+                    {
+                        offset = update.Id + 1;
+                        if (update.Message is { } message) await HandleAsync(message, stoppingToken);
+                    }
                 }
+                catch (OperationCanceledException) when (reset.IsCancellationRequested) { break; }
+                // Never the exception text: it can carry the bot token from a request URL.
+                catch (Exception ex) { logger.LogWarning("Telegram polling failed ({Type})", ex.GetType().Name); try { await Task.Delay(5000, reset.Token); } catch (OperationCanceledException) { break; } }
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            // Never the exception text: it can carry the bot token from a request URL.
-            catch (Exception ex) { logger.LogWarning("Telegram polling failed ({Type})", ex.GetType().Name); await Task.Delay(5000, stoppingToken); }
         }
         events.Unsubscribe(DeliverAsync);
         await albumLoop;
@@ -190,7 +197,7 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
     /// already in front of them, and a photo arriving unasked for in a chat would be a surprise, not a service.</summary>
     public async Task DeliverAsync(GenerationEvent moved, CancellationToken ct)
     {
-        if (moved.Status is not (RunStatus.Completed or RunStatus.Failed or RunStatus.Cancelled or RunStatus.Answered)) return;
+        if (!bot.Configured || moved.Status is not (RunStatus.Completed or RunStatus.Failed or RunStatus.Cancelled or RunStatus.Answered)) return;
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         if (await db.TelegramLinks.AsNoTracking().Where(l => l.UserId == moved.UserId).Select(l => (long?)l.ChatId).FirstOrDefaultAsync(ct) is not { } chat) return;

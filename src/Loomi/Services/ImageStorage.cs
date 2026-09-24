@@ -4,6 +4,8 @@ public interface IImageStorage
     Task<string> SaveAsync(Guid project, Guid generation, byte[] bytes, CancellationToken ct);
     /// <summary>Keeps a user's reference image under uploads/{user}/, judged by its bytes like everything else here.</summary>
     Task<string> SaveUploadAsync(Guid user, Guid upload, byte[] bytes, CancellationToken ct);
+    /// <summary>A template's sample, under a fresh name each time so a replaced one is never served from a cache.</summary>
+    Task<string> SaveTemplateAsync(Guid template, byte[] bytes, CancellationToken ct);
     string Resolve(string path);
     void Delete(string path);
     void DeleteProject(Guid id);
@@ -22,6 +24,7 @@ public class ImageStorage(IConfiguration config) : IImageStorage
     public static string ContentTypeFor(string path) => Path.GetExtension(path) switch { ".png" => "image/png", ".webp" => "image/webp", _ => "image/jpeg" };
     public Task<string> SaveAsync(Guid project, Guid generation, byte[] bytes, CancellationToken ct) => WriteAsync($"projects/{project}/{generation}/image", bytes, ct);
     public Task<string> SaveUploadAsync(Guid user, Guid upload, byte[] bytes, CancellationToken ct) => WriteAsync($"uploads/{user}/{upload}", bytes, ct);
+    public Task<string> SaveTemplateAsync(Guid template, byte[] bytes, CancellationToken ct) => WriteAsync($"templates/{template}/{Guid.NewGuid():N}", bytes, ct);
     private async Task<string> WriteAsync(string stem, byte[] bytes, CancellationToken ct)
     {
         if (bytes.Length > MaxBytes) throw new InvalidOperationException("InvalidImage");

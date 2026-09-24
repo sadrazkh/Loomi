@@ -13,7 +13,7 @@ public record InputDto(Guid? UploadId, Guid? GenerationId, string Url)
 public record LoginRequest([Required, StringLength(64, MinimumLength = 1)] string Username, [Required, StringLength(512, MinimumLength = 1)] string Password);
 // Nullable on purpose, like ResetPassword in UsersController: a non-nullable string would make [ApiController] answer bad input with its own ProblemDetails instead of a stable error code.
 public record ChangePasswordRequest(string? CurrentPassword, string? NewPassword);
-public record GenerationDto(Guid Id, Guid ProjectId, string Prompt, DateTime CreatedAt, Guid? ParentGenerationId, string? ImageUrl, string? ConversationUrl, Operation Operation, RunStatus Status, string? ErrorMessage, List<InputDto> Inputs, string? ReplyText)
+public record GenerationDto(Guid Id, Guid ProjectId, string Prompt, DateTime CreatedAt, Guid? ParentGenerationId, string? ImageUrl, string? ConversationUrl, Operation Operation, RunStatus Status, string? ErrorMessage, List<InputDto> Inputs, string? ReplyText, string? TemplateTitle = null)
 {
-    public static GenerationDto From(Generation g) => new(g.Id, g.ProjectId, g.Prompt, g.CreatedAt, g.ParentGenerationId, g.LocalImagePath == null ? null : $"/api/generations/{g.Id}/image", g.ConversationUrl, g.Operation, g.Status, g.ErrorMessage, g.Inputs.OrderBy(i => i.Order).Select(InputDto.From).ToList(), g.ReplyText);
+    public static GenerationDto From(Generation g) => new(g.Id, g.ProjectId, g.Prompt, g.CreatedAt, g.ParentGenerationId, g.LocalImagePath == null ? null : $"/api/generations/{g.Id}/image", g.ConversationUrl, g.Operation, g.Status, g.ErrorMessage, g.Inputs.OrderBy(i => i.Order).Select(InputDto.From).ToList(), g.ReplyText, g.TemplateTitle);
 }

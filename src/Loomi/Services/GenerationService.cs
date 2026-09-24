@@ -8,9 +8,10 @@ using Microsoft.Extensions.Options;
 namespace Loomi.Services;
 public class GenerationService(AppDbContext db, IOptions<BrowserOptions> browser)
 {
-    public async Task<Generation> SubmitAsync(Viewer viewer, Guid projectId, string prompt, Provider provider, Operation operation, Guid? parentId, IReadOnlyList<InputRef>? inputs, CancellationToken ct)
+    /// <summary>With a template, the prompt is only what the person added and may be empty: the template's own prompt travels beside it, hidden.</summary>
+    public async Task<Generation> SubmitAsync(Viewer viewer, Guid projectId, string prompt, Provider provider, Operation operation, Guid? parentId, IReadOnlyList<InputRef>? inputs, CancellationToken ct, TemplateUse? template = null)
     {
-        if (string.IsNullOrWhiteSpace(prompt) || prompt.Length > 12000) throw new InvalidOperationException("InvalidPrompt");
+        if ((template is null && string.IsNullOrWhiteSpace(prompt)) || prompt.Length > 12000) throw new InvalidOperationException("InvalidPrompt");
         var refs = inputs ?? [];
         if (refs.Count > browser.Value.MaxInputs) throw new InvalidOperationException("TooManyInputs");
         // Serializable SQLite transaction keeps queue admission and deletion consistent.
@@ -46,7 +47,8 @@ public class GenerationService(AppDbContext db, IOptions<BrowserOptions> browser
         // One earlier image from the same project is a lineage, so the tree still shows it; several are a set with no single parent.
         if (parentId == null && ordered is [{ SourceGenerationId: { } only }] && await db.Generations.AnyAsync(x => x.Id == only && x.ProjectId == projectId, ct)) parentId = only;
         // The project's user, not the actor: an owner helping out must not spend their own quota or take the work over.
-        var generation = new Generation { ProjectId = projectId, UserId = project.UserId, Provider = provider, Prompt = prompt.Trim(), Operation = operation, ParentGenerationId = parentId, Inputs = ordered, AccountId = pinned };
+        var generation = new Generation { ProjectId = projectId, UserId = project.UserId, Provider = provider, Prompt = prompt.Trim(), Operation = operation, ParentGenerationId = parentId, Inputs = ordered, AccountId = pinned,
+                                          TemplateId = template?.Id, TemplateTitle = template?.Title, HiddenPrompt = template?.HiddenPrompt };
         // The owner pays for the provider accounts themselves, so charging them their own credits would be bookkeeping with nothing behind it,
         // and work whose user no longer exists has no balance to spend — the same reasoning the daily quota uses.
         if (await db.Users.AsNoTracking().Where(u => u.Id == project.UserId).Select(u => (UserRole?)u.Role).FirstOrDefaultAsync(ct) == UserRole.Member)

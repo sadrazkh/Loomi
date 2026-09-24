@@ -22,26 +22,45 @@ public interface ITelegramClient
     Task SendPhotoAsync(long chat, byte[] photo, string name, string? caption, CancellationToken ct);
     /// <summary>The file's bytes, or null when it is over the cap or the Bot API will not hand it over.</summary>
     Task<byte[]?> DownloadAsync(string fileId, long maxBytes, CancellationToken ct);
+    /// <summary>The bot's username for a token, or null when Telegram does not recognise it. Asked before a token is kept.</summary>
+    Task<string?> WhoAmIAsync(string token, CancellationToken ct);
 }
-public class TelegramClient(IOptions<TelegramOptions> options) : ITelegramClient
+public class TelegramClient(BotSettings settings, IOptions<TelegramOptions> options) : ITelegramClient
 {
-    // Built on first use, so a deployment without a token never constructs one and the worker's own check is the only gate.
-    private readonly Lazy<ITelegramBotClient> bot = new(() => new TelegramBotClient(options.Value.BotToken ?? ""));
+    private (string Token, ITelegramBotClient Client)? built;
     private readonly int poll = Math.Clamp(options.Value.PollSeconds, 1, 50);
+    /// <summary>Built for whatever token is current, and again when the owner changes it; nothing is constructed while there is none.</summary>
+    private ITelegramBotClient Bot
+    {
+        get
+        {
+            var token = settings.Token ?? throw new InvalidOperationException("TelegramNotConfigured");
+            if (built is { } current && current.Token == token) return current.Client;
+            var client = new TelegramBotClient(token);
+            built = (token, client);
+            return client;
+        }
+    }
+    // A malformed token throws in the constructor and an unknown one on the call; either way the answer is "not a bot".
+    public async Task<string?> WhoAmIAsync(string token, CancellationToken ct)
+    {
+        try { return (await new TelegramBotClient(token).GetMeAsync(ct)).Username; }
+        catch (Exception ex) when (ex is not OperationCanceledException) { return null; }
+    }
     public async Task<IReadOnlyList<Update>> GetUpdatesAsync(int offset, CancellationToken ct) =>
-        await bot.Value.GetUpdatesAsync(offset, timeout: poll, allowedUpdates: [UpdateType.Message], cancellationToken: ct);
-    public Task SendTextAsync(long chat, string text, CancellationToken ct) => bot.Value.SendTextMessageAsync(chat, text, cancellationToken: ct);
+        await Bot.GetUpdatesAsync(offset, timeout: poll, allowedUpdates: [UpdateType.Message], cancellationToken: ct);
+    public Task SendTextAsync(long chat, string text, CancellationToken ct) => Bot.SendTextMessageAsync(chat, text, cancellationToken: ct);
     public async Task SendPhotoAsync(long chat, byte[] photo, string name, string? caption, CancellationToken ct)
     {
         using var stream = new MemoryStream(photo);
-        await bot.Value.SendPhotoAsync(chat, InputFile.FromStream(stream, name), caption: caption, cancellationToken: ct);
+        await Bot.SendPhotoAsync(chat, InputFile.FromStream(stream, name), caption: caption, cancellationToken: ct);
     }
     public async Task<byte[]?> DownloadAsync(string fileId, long maxBytes, CancellationToken ct)
     {
-        var file = await bot.Value.GetFileAsync(fileId, ct);
+        var file = await Bot.GetFileAsync(fileId, ct);
         if (file.FilePath == null || file.FileSize > maxBytes) return null;
         using var buffer = new MemoryStream();
-        await bot.Value.DownloadFileAsync(file.FilePath, buffer, ct);
+        await Bot.DownloadFileAsync(file.FilePath, buffer, ct);
         // Telegram's own size is advisory; the bytes that actually arrived are what counts.
         return buffer.Length > maxBytes ? null : buffer.ToArray();
     }
