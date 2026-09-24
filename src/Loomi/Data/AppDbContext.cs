@@ -18,6 +18,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<TemplateCategory> TemplateCategories => Set<TemplateCategory>();
     public DbSet<PromptTemplate> Templates => Set<PromptTemplate>();
     public DbSet<AppSetting> Settings => Set<AppSetting>();
+    public DbSet<BotRequest> BotRequests => Set<BotRequest>();
     // No global query filter on UserId: the dispatcher runs without a user and would silently read an empty database.
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -66,6 +67,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         // A category is removed only once it is empty, so a template is never left without one.
         b.Entity<PromptTemplate>().HasOne<TemplateCategory>().WithMany().HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<PromptTemplate>().HasIndex(x => new { x.CategoryId, x.Order });
+        b.Entity<BotRequest>().HasKey(x => x.GenerationId);
+        b.Entity<BotRequest>().HasOne<Generation>().WithOne().HasForeignKey<BotRequest>(x => x.GenerationId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<BotRequest>().HasIndex(x => new { x.ChatId, x.CreatedAt });
         b.Entity<AppSetting>().HasKey(x => x.Key);
         b.Entity<AppSetting>().Property(x => x.Key).HasMaxLength(64);
         b.Entity<AppSetting>().Property(x => x.Value).HasMaxLength(4000);

@@ -1,9 +1,9 @@
 using Loomi.Models;
 namespace Loomi.Services;
 /// <summary>What moved, flattened off the entity: a subscriber runs after the run's own context is done with the row and must not hold a reference to it.</summary>
-public readonly record struct GenerationEvent(Guid Id, Guid ProjectId, Guid UserId, RunStatus Status, string? ImagePath, string? ErrorMessage, string Prompt, string? ReplyText = null)
+public readonly record struct GenerationEvent(Guid Id, Guid ProjectId, Guid UserId, RunStatus Status, string? ImagePath, string? ErrorMessage, string Prompt, string? ReplyText = null, string? TemplateTitle = null)
 {
-    public static GenerationEvent From(Generation g) => new(g.Id, g.ProjectId, g.UserId, g.Status, g.LocalImagePath, g.ErrorMessage, g.Prompt, g.ReplyText);
+    public static GenerationEvent From(Generation g) => new(g.Id, g.ProjectId, g.UserId, g.Status, g.LocalImagePath, g.ErrorMessage, g.Prompt, g.ReplyText, g.TemplateTitle);
 }
 /// <summary>An announcement inside the process that a generation moved. The SignalR notification is untouched and stays what the browser listens to;
 /// this is how anything else in the server — the bot — hears the same thing without a loop that asks the database over and over.</summary>

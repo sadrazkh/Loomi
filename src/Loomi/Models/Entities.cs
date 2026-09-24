@@ -116,6 +116,15 @@ public class PromptTemplate
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
+/// <summary>Work that was asked for in a Telegram chat, and the message there that says where it stands. It is how the result finds its way back to
+/// that chat wherever the work lives: a template's or an edit's project is not the bot's own.</summary>
+public class BotRequest
+{
+    public Guid GenerationId { get; set; }
+    public long ChatId { get; set; }
+    public int? StatusMessageId { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
 /// <summary>A workspace setting the owner changes from the app itself. A secret is sealed before it is stored here.</summary>
 public class AppSetting
 {

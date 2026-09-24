@@ -116,6 +116,27 @@ namespace Loomi.Data.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("Loomi.Models.BotRequest", b =>
+                {
+                    b.Property<Guid>("GenerationId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ChatId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("StatusMessageId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("GenerationId");
+
+                    b.HasIndex("ChatId", "CreatedAt");
+
+                    b.ToTable("BotRequests");
+                });
+
             modelBuilder.Entity("Loomi.Models.CreditEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -519,6 +540,15 @@ namespace Loomi.Data.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("Uploads");
+                });
+
+            modelBuilder.Entity("Loomi.Models.BotRequest", b =>
+                {
+                    b.HasOne("Loomi.Models.Generation", null)
+                        .WithOne()
+                        .HasForeignKey("Loomi.Models.BotRequest", "GenerationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Loomi.Models.Generation", b =>

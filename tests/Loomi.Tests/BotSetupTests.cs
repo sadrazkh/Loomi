@@ -124,7 +124,8 @@ public class BotSetupTests
         var telegram = new PollCounter();
         var bot = new BotSettings(factory.Services.GetRequiredService<IServiceScopeFactory>(), factory.Services.GetRequiredService<AccountSecrets>(), Options.Create(new TelegramOptions()));
         var worker = new TelegramBotWorker(factory.Services.GetRequiredService<IServiceScopeFactory>(), telegram, factory.Services.GetRequiredService<Loomi.Services.GenerationEvents>(),
-            Options.Create(new TelegramOptions()), Options.Create(new Loomi.BrowserAutomation.BrowserOptions()), bot, Microsoft.Extensions.Logging.Abstractions.NullLogger<TelegramBotWorker>.Instance);
+            Options.Create(new TelegramOptions()), Options.Create(new Loomi.BrowserAutomation.BrowserOptions()), bot, factory.Services.GetRequiredService<Loomi.Services.QueueEstimates>(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<TelegramBotWorker>.Instance);
         await worker.StartAsync(default);
         try
         {
@@ -134,6 +135,8 @@ public class BotSetupTests
             var deadline = DateTime.UtcNow.AddSeconds(5);
             while (telegram.Polls == 0 && DateTime.UtcNow < deadline) await Task.Delay(50);
             Assert.True(telegram.Polls > 0);
+            // A new bot gets its command menu as it starts.
+            Assert.True(telegram.CommandSets > 0);
         }
         finally { await worker.StopAsync(default); }
     }
@@ -143,8 +146,14 @@ public class BotSetupTests
         private int polls;
         public int Polls => Volatile.Read(ref polls);
         public async Task<IReadOnlyList<Update>> GetUpdatesAsync(int offset, CancellationToken ct) { Interlocked.Increment(ref polls); await Task.Delay(100, ct); return []; }
-        public Task SendTextAsync(long chat, string text, CancellationToken ct) => Task.CompletedTask;
-        public Task SendPhotoAsync(long chat, byte[] photo, string name, string? caption, CancellationToken ct) => Task.CompletedTask;
+        public Task<int> SendTextAsync(long chat, string text, CancellationToken ct, IReadOnlyList<IReadOnlyList<BotButton>>? buttons = null) => Task.FromResult(1);
+        public Task SendPhotoAsync(long chat, byte[] photo, string name, string? caption, CancellationToken ct, IReadOnlyList<IReadOnlyList<BotButton>>? buttons = null) => Task.CompletedTask;
+        public Task SendDocumentAsync(long chat, byte[] file, string name, string? caption, CancellationToken ct) => Task.CompletedTask;
+        public Task EditTextAsync(long chat, int message, string text, CancellationToken ct) => Task.CompletedTask;
+        public Task DeleteAsync(long chat, int message, CancellationToken ct) => Task.CompletedTask;
+        public Task AnswerAsync(string callback, CancellationToken ct) => Task.CompletedTask;
+        public int CommandSets;
+        public Task SetCommandsAsync(IReadOnlyList<BotCommandText> commands, CancellationToken ct) { Interlocked.Increment(ref CommandSets); return Task.CompletedTask; }
         public Task<byte[]?> DownloadAsync(string fileId, long maxBytes, CancellationToken ct) => Task.FromResult<byte[]?>(null);
         public Task<string?> WhoAmIAsync(string token, CancellationToken ct) => Task.FromResult<string?>(null);
     }

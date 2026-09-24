@@ -20,13 +20,36 @@ namespace Loomi.Tests;
 public class FakeTelegram : ITelegramClient
 {
     public List<(long Chat, string Text)> Texts { get; } = [];
+    /// <summary>The buttons under each text, in the same order as <see cref="Texts"/>; null where there were none.</summary>
+    public List<IReadOnlyList<IReadOnlyList<BotButton>>?> TextButtons { get; } = [];
     public List<(long Chat, byte[] Photo, string Name, string? Caption)> Photos { get; } = [];
+    public List<IReadOnlyList<IReadOnlyList<BotButton>>?> PhotoButtons { get; } = [];
+    public List<(long Chat, byte[] File, string Name)> Documents { get; } = [];
+    public List<(long Chat, int Message, string Text)> Edits { get; } = [];
+    public List<(long Chat, int Message)> Deleted { get; } = [];
+    public List<string> Answered { get; } = [];
+    public IReadOnlyList<BotCommandText>? Commands { get; private set; }
+    /// <summary>Message ids as Telegram hands them out, one per text sent, so a status line can be found again by the id the bot kept.</summary>
+    public Dictionary<int, string> Sent { get; } = [];
+    private int next = 100;
     /// <summary>File id to bytes. An id nobody put here is a file the Bot API will not hand over.</summary>
     public Dictionary<string, byte[]> Files { get; } = [];
     public string LastText => Texts[^1].Text;
+    /// <summary>Every button data string offered anywhere so far, for pressing the way a person would.</summary>
+    public IEnumerable<string> Offered => TextButtons.Concat(PhotoButtons).Where(k => k is not null).SelectMany(k => k!).SelectMany(r => r).Select(b => b.Data);
     public Task<IReadOnlyList<Update>> GetUpdatesAsync(int offset, CancellationToken ct) => Task.FromResult<IReadOnlyList<Update>>([]);
-    public Task SendTextAsync(long chat, string text, CancellationToken ct) { Texts.Add((chat, text)); return Task.CompletedTask; }
-    public Task SendPhotoAsync(long chat, byte[] photo, string name, string? caption, CancellationToken ct) { Photos.Add((chat, photo, name, caption)); return Task.CompletedTask; }
+    public Task<int> SendTextAsync(long chat, string text, CancellationToken ct, IReadOnlyList<IReadOnlyList<BotButton>>? buttons = null)
+    {
+        Texts.Add((chat, text)); TextButtons.Add(buttons); Sent[++next] = text;
+        return Task.FromResult(next);
+    }
+    public Task SendPhotoAsync(long chat, byte[] photo, string name, string? caption, CancellationToken ct, IReadOnlyList<IReadOnlyList<BotButton>>? buttons = null)
+    { Photos.Add((chat, photo, name, caption)); PhotoButtons.Add(buttons); return Task.CompletedTask; }
+    public Task SendDocumentAsync(long chat, byte[] file, string name, string? caption, CancellationToken ct) { Documents.Add((chat, file, name)); return Task.CompletedTask; }
+    public Task EditTextAsync(long chat, int message, string text, CancellationToken ct) { Edits.Add((chat, message, text)); return Task.CompletedTask; }
+    public Task DeleteAsync(long chat, int message, CancellationToken ct) { Deleted.Add((chat, message)); return Task.CompletedTask; }
+    public Task AnswerAsync(string callback, CancellationToken ct) { Answered.Add(callback); return Task.CompletedTask; }
+    public Task SetCommandsAsync(IReadOnlyList<BotCommandText> commands, CancellationToken ct) { Commands = commands; return Task.CompletedTask; }
     public Task<byte[]?> DownloadAsync(string fileId, long maxBytes, CancellationToken ct) =>
         Task.FromResult(Files.TryGetValue(fileId, out var bytes) && bytes.Length <= maxBytes ? bytes : null);
     /// <summary>A token Telegram would recognise, in this fake, is one that starts with the bot id the tests use.</summary>
@@ -41,7 +64,7 @@ public class TelegramTests
     private static TelegramBotWorker WorkerFor(AppFactory factory, FakeTelegram bot) => new(
         factory.Services.GetRequiredService<IServiceScopeFactory>(), bot, factory.Services.GetRequiredService<GenerationEvents>(),
         Options.Create(new TelegramOptions { BotToken = "test-token", MediaGroupMs = 1500 }),
-        Options.Create(new BrowserOptions()), ConfiguredBot(factory), NullLogger<TelegramBotWorker>.Instance);
+        Options.Create(new BrowserOptions()), ConfiguredBot(factory), factory.Services.GetRequiredService<QueueEstimates>(), NullLogger<TelegramBotWorker>.Instance);
     /// <summary>A bot set in configuration, the way a deployment without the in-app setting has one.</summary>
     public static BotSettings ConfiguredBot(AppFactory factory) => new(factory.Services.GetRequiredService<IServiceScopeFactory>(),
         factory.Services.GetRequiredService<Loomi.Security.AccountSecrets>(), Options.Create(new TelegramOptions { BotToken = "test-token" }));
@@ -268,7 +291,7 @@ public class TelegramTests
     {
         using var factory = new TelegramFactory(); var bot = new FakeTelegram();
         var worker = new TelegramBotWorker(factory.Services.GetRequiredService<IServiceScopeFactory>(), bot, factory.Services.GetRequiredService<GenerationEvents>(),
-            factory.Services.GetRequiredService<IOptions<TelegramOptions>>(), Options.Create(new BrowserOptions()), factory.Services.GetRequiredService<BotSettings>(), NullLogger<TelegramBotWorker>.Instance);
+            factory.Services.GetRequiredService<IOptions<TelegramOptions>>(), Options.Create(new BrowserOptions()), factory.Services.GetRequiredService<BotSettings>(), factory.Services.GetRequiredService<QueueEstimates>(), NullLogger<TelegramBotWorker>.Instance);
         await MemberAsync(factory, "sara");
         using var client = await SignInAsync(factory, "sara", "sara-strong-pass");
         var issued = await client.PostAsync("/api/telegram/link", null);

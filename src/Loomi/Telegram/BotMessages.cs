@@ -5,6 +5,10 @@ public static class BotMessages
 {
     /// <summary>Telegram sends a full tag such as "fa-IR"; the language is the part before the region.</summary>
     public static bool IsPersian(string? languageCode) => languageCode?.StartsWith("fa", StringComparison.OrdinalIgnoreCase) == true;
+    /// <summary>Written in Persian script. Many people run Telegram in English and still write in Persian, and they should be answered in Persian.</summary>
+    public static bool LooksPersian(string? text) => text?.Any(c => c is >= '\u0600' and <= '\u06FF') == true;
+    /// <summary>A number the way the reader writes it: Persian digits in Persian.</summary>
+    public static string Number(long n, bool persian) => persian ? string.Concat(n.ToString().Select(c => char.IsAsciiDigit(c) ? (char)('\u06F0' + (c - '0')) : c)) : n.ToString();
     public static string Text(string key, bool persian, params object[] args)
     {
         var (en, fa) = Table.TryGetValue(key, out var found) ? found : Table["AutomationFailed"];
@@ -12,8 +16,8 @@ public static class BotMessages
     }
     private static readonly Dictionary<string, (string En, string Fa)> Table = new(StringComparer.Ordinal)
     {
-        ["help"] = ("Send me a description and I will make the image. A photo with a caption uses that photo as a reference, and several photos sent together become one request.\n\n/balance — your credits\n/status — what is running\n/cancel — stop your unfinished work",
-                    "توضیح تصویری را که می‌خواهید بفرستید تا بسازم. عکس همراه با شرح، همان عکس را به‌عنوان مرجع می‌گیرد و چند عکس که با هم فرستاده شوند یک درخواست می‌شوند.\n\n/balance — اعتبار شما\n/status — کارهای در جریان\n/cancel — لغو کارهای ناتمام شما"),
+        ["help"] = ("Send me a description and I will make the image. A photo with a caption uses that photo as a reference, and several photos sent together become one request.\n\n/templates — ready-made looks: pick one and send your photo\n/balance — your credits\n/status — what is running\n/cancel — stop what you are doing\n\nUnder every image: ✏️ edit it, 🔁 another version, 📄 the original file in full quality.",
+                    "توضیح تصویری را که می‌خواهید بفرستید تا بسازم. عکس همراه با شرح، همان عکس را به‌عنوان مرجع می‌گیرد و چند عکس که با هم فرستاده شوند یک درخواست می‌شوند.\n\n/templates — قالب‌های آماده: یکی را انتخاب کنید و عکستان را بفرستید\n/balance — اعتبار شما\n/status — کارهای در جریان\n/cancel — لغو کار جاری\n\nزیر هر تصویر: ✏️ ویرایش، 🔁 نسخه‌ی دیگر، 📄 فایل اصلی با کیفیت کامل."),
         ["linkFirst"] = ("This chat is not linked to a Loomi account. Open Loomi, go to Settings → Telegram, ask for a code, and send it here as: /start CODE",
                          "این گفت‌وگو به هیچ حساب Loomi وصل نیست. در Loomi به تنظیمات ← تلگرام بروید، یک کد بگیرید و این‌جا بفرستید: /start CODE"),
         ["linked"] = ("Linked to {0}. Send a description and I will make the image.", "به {0} وصل شد. توضیح تصویر را بفرستید تا بسازم."),
@@ -55,6 +59,35 @@ public static class BotMessages
         ["NoConversation"] = ("That conversation cannot be continued. Send a new description to start a fresh one.", "آن گفت‌وگو قابل ادامه نیست. یک توضیح تازه بفرستید تا گفت‌وگوی جدیدی شروع شود."),
         ["NotFound"] = ("I could not find that.", "آن را پیدا نکردم."),
         ["AutomationFailed"] = ("That did not work. Try again in a moment.", "انجام نشد. کمی بعد دوباره امتحان کنید."),
+        // Templates, result buttons and the status line.
+        ["btnTemplates"] = ("✨ Templates", "✨ قالب‌ها"),
+        ["btnHelp"] = ("❓ Help", "❓ راهنما"),
+        ["btnEdit"] = ("✏️ Edit", "✏️ ویرایش"),
+        ["btnAgain"] = ("🔁 Another version", "🔁 نسخه‌ی دیگر"),
+        ["btnFile"] = ("📄 Original file", "📄 فایل اصلی"),
+        ["btnUse"] = ("✨ Use this template", "✨ استفاده از این قالب"),
+        ["btnGoNow"] = ("▶️ Make it now", "▶️ همین حالا بساز"),
+        ["btnOtherTemplates"] = ("⬅️ Other templates", "⬅️ قالب‌های دیگر"),
+        ["btnCategories"] = ("⬅️ Categories", "⬅️ دسته‌ها"),
+        ["noTemplates"] = ("There are no templates yet. Send a description and I will make it.", "هنوز قالبی آماده نیست. توضیح تصویر را بفرستید تا بسازم."),
+        ["pickCategory"] = ("Pick a category:", "یک دسته را انتخاب کنید:"),
+        ["pickTemplate"] = ("Templates in “{0}”. Tap one to see its sample:", "قالب‌های «{0}». روی هر کدام بزنید تا نمونه‌اش را ببینید:"),
+        ["templatePhotos"] = ("Send: {0}", "لازم است: {0}"),
+        ["templatePrice"] = ("Cost: {0} credits", "هزینه: {0} اعتبار"),
+        ["sendTemplatePhotos"] = ("“{0}” it is. Now send {1}; put a note in the caption if you like.\n/cancel to stop.", "قالب «{0}» انتخاب شد. حالا {1} بفرستید؛ اگر توضیحی دارید در کپشن بنویسید.\nبرای انصراف /cancel"),
+        ["templateNeedsPhotos"] = ("This template takes {0}. Send them together, as one message or one album.", "این قالب {0} می‌خواهد. همه را با هم بفرستید، در یک پیام یا یک آلبوم."),
+        ["photosOne"] = ("one photo", "یک عکس"),
+        ["photosExact"] = ("{0} photos", "{0} عکس"),
+        ["photosRange"] = ("{0} to {1} photos", "{0} تا {1} عکس"),
+        ["photosUpTo"] = ("up to {0} photos, or none", "حداکثر {0} عکس، یا هیچ"),
+        ["editPrompt"] = ("Tell me what to change. You can attach a reference photo too.\n/cancel to stop.", "بنویسید چه چیزی را تغییر بدهم. می‌توانید عکس مرجع هم بفرستید.\nبرای انصراف /cancel"),
+        ["stateCleared"] = ("Stopped. Send a description whenever you like.", "لغو شد. هر وقت خواستید توضیح بفرستید."),
+        ["statusQueued"] = ("⏳ Queued.", "⏳ در صف."),
+        ["statusNext"] = ("⏳ Queued · you are next.", "⏳ در صف · نوبت بعدی مال شماست."),
+        ["statusAhead"] = ("⏳ Queued · {0} ahead · about {1} min.", "⏳ در صف · {0} درخواست جلوتر · حدود {1} دقیقه."),
+        ["statusAheadOnly"] = ("⏳ Queued · {0} ahead · waiting for an account to free up.", "⏳ در صف · {0} درخواست جلوتر · منتظر آزاد شدن یک حساب."),
+        ["statusWorking"] = ("🎨 Making it now…", "🎨 در حال ساختن…"),
+        ["templateCaptionTitle"] = ("Template: {0}", "قالب: {0}"),
         // Owner alerts. They reach only chats linked to an owner, so they can name accounts and point at settings members never see.
         ["alertLoginRequired"] = ("Loomi: account \"{0}\" needs you to sign in again. Settings → Provider accounts → Open secure browser. For a Gemini key, the key was refused: replace it.",
                                   "Loomi: حساب «{0}» باید دوباره وارد شود. تنظیمات ← حساب‌های ارائه‌دهنده ← «باز کردن مرورگر امن». اگر کلید Gemini است، کلید رد شده؛ عوضش کنید."),
