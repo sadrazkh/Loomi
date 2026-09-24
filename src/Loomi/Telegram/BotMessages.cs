@@ -16,11 +16,12 @@ public static class BotMessages
     }
     private static readonly Dictionary<string, (string En, string Fa)> Table = new(StringComparer.Ordinal)
     {
-        ["help"] = ("Send me a description and I will make the image. A photo with a caption uses that photo as a reference, and several photos sent together become one request.\n\n/templates — ready-made looks: pick one and send your photo\n/balance — your credits\n/status — what is running\n/cancel — stop what you are doing\n\nUnder every image: ✏️ edit it, 🔁 another version, 📄 the original file in full quality.",
-                    "توضیح تصویری را که می‌خواهید بفرستید تا بسازم. عکس همراه با شرح، همان عکس را به‌عنوان مرجع می‌گیرد و چند عکس که با هم فرستاده شوند یک درخواست می‌شوند.\n\n/templates — قالب‌های آماده: یکی را انتخاب کنید و عکستان را بفرستید\n/balance — اعتبار شما\n/status — کارهای در جریان\n/cancel — لغو کار جاری\n\nزیر هر تصویر: ✏️ ویرایش، 🔁 نسخه‌ی دیگر، 📄 فایل اصلی با کیفیت کامل."),
+        ["help"] = ("Send me a description and I will make the image. Whatever you send next continues the same conversation, as in ChatGPT, so there is no need to send the picture again; /new starts a fresh one. A photo with a caption uses that photo as a reference, and several photos sent together become one request.\n\n/new — start a new chat\n/templates — ready-made looks: pick one and send your photo\n/balance — your credits\n/status — what is running\n/cancel — stop what you are doing\n\nUnder every image: ✏️ edit it, 🔁 another version, 📄 the original file in full quality, 🆕 a new chat.",
+                    "توضیح تصویری را که می‌خواهید بفرستید تا بسازم. هر چه بعد از آن بفرستید همان گفتگو را ادامه می‌دهد، مثل ChatGPT، پس لازم نیست عکس را دوباره بفرستید؛ /new گفتگوی تازه‌ای شروع می‌کند. عکس همراه با شرح، همان عکس را به‌عنوان مرجع می‌گیرد و چند عکس که با هم فرستاده شوند یک درخواست می‌شوند.\n\n/new — شروع گفتگوی تازه\n/templates — قالب‌های آماده: یکی را انتخاب کنید و عکستان را بفرستید\n/balance — اعتبار شما\n/status — کارهای در جریان\n/cancel — لغو کار جاری\n\nزیر هر تصویر: ✏️ ویرایش، 🔁 نسخه‌ی دیگر، 📄 فایل اصلی با کیفیت کامل، 🆕 گفتگوی تازه."),
         ["linkFirst"] = ("This chat is not linked to a Loomi account. Open Loomi, go to Settings → Telegram, ask for a code, and send it here as: /start CODE",
                          "این گفت‌وگو به هیچ حساب Loomi وصل نیست. در Loomi به تنظیمات ← تلگرام بروید، یک کد بگیرید و این‌جا بفرستید: /start CODE"),
-        ["linked"] = ("Linked to {0}. Send a description and I will make the image.", "به {0} وصل شد. توضیح تصویر را بفرستید تا بسازم."),
+        ["linked"] = ("Linked to {0}. Send a description and I will make the image; whatever you send after it continues the same chat, and /new starts a fresh one.",
+                      "به {0} وصل شد. توضیح تصویر را بفرستید تا بسازم؛ پیام‌های بعدی همان گفتگو را ادامه می‌دهند و /new گفتگوی تازه‌ای شروع می‌کند."),
         ["linkUnknown"] = ("That code is not one of ours. Ask for a new one in Settings → Telegram.", "این کد از ما نیست. در تنظیمات ← تلگرام کد تازه بگیرید."),
         ["linkExpired"] = ("That code has expired. Codes last ten minutes; ask for a new one in Settings → Telegram.", "این کد منقضی شده است. هر کد ده دقیقه اعتبار دارد؛ در تنظیمات ← تلگرام کد تازه بگیرید."),
         ["linkChatTaken"] = ("This chat is already linked to a Loomi account. Unlink it there first.", "این گفت‌وگو از قبل به یک حساب Loomi وصل است. اول از همان‌جا قطعش کنید."),
@@ -42,7 +43,8 @@ public static class BotMessages
         ["NoAccount"] = ("No provider account is ready right now.", "هیچ حساب ارائه‌دهنده‌ای اکنون آماده نیست."),
         ["InvalidInput"] = ("One of the reference images cannot be used.", "یکی از تصویرهای مرجع قابل استفاده نیست."),
         ["InvalidParent"] = ("One of the reference images cannot be used.", "یکی از تصویرهای مرجع قابل استفاده نیست."),
-        ["ProjectBusy"] = ("That project still has work running.", "این پروژه هنوز کاری در حال اجرا دارد."),
+        // Only the bot says this, and only when a chat's next message arrives before the answer to its last: a conversation takes one at a time.
+        ["ProjectBusy"] = ("Your previous image is still being made. Wait for it, or send /new to start a new chat.", "تصویر قبلی‌تان هنوز در حال ساخته شدن است. صبر کنید تا برسد، یا با /new گفتگوی تازه‌ای شروع کنید."),
         ["LoginRequired"] = ("The provider account has to be signed in again; only the owner can do that.", "حساب ارائه‌دهنده باید دوباره وارد شود؛ فقط مالک می‌تواند این کار را بکند."),
         ["VerificationRequired"] = ("The provider is asking for a human check; only the owner can clear it.", "ارائه‌دهنده بررسی انسانی می‌خواهد؛ فقط مالک می‌تواند آن را رد کند."),
         ["GenerationTimeout"] = ("It took too long and was given up on. Your credits are back.", "بیش از حد طول کشید و رها شد. اعتبارتان برگشت."),
@@ -65,6 +67,7 @@ public static class BotMessages
         ["btnEdit"] = ("✏️ Edit", "✏️ ویرایش"),
         ["btnAgain"] = ("🔁 Another version", "🔁 نسخه‌ی دیگر"),
         ["btnFile"] = ("📄 Original file", "📄 فایل اصلی"),
+        ["btnNewChat"] = ("🆕 New chat", "🆕 گفتگوی تازه"),
         ["btnUse"] = ("✨ Use this template", "✨ استفاده از این قالب"),
         ["btnGoNow"] = ("▶️ Make it now", "▶️ همین حالا بساز"),
         ["btnOtherTemplates"] = ("⬅️ Other templates", "⬅️ قالب‌های دیگر"),
@@ -81,6 +84,7 @@ public static class BotMessages
         ["photosRange"] = ("{0} to {1} photos", "{0} تا {1} عکس"),
         ["photosUpTo"] = ("up to {0} photos, or none", "حداکثر {0} عکس، یا هیچ"),
         ["editPrompt"] = ("Tell me what to change. You can attach a reference photo too.\n/cancel to stop.", "بنویسید چه چیزی را تغییر بدهم. می‌توانید عکس مرجع هم بفرستید.\nبرای انصراف /cancel"),
+        ["newChat"] = ("🆕 New chat. Your next message starts it.", "🆕 گفتگوی تازه. پیام بعدی‌تان آن را شروع می‌کند."),
         ["stateCleared"] = ("Stopped. Send a description whenever you like.", "لغو شد. هر وقت خواستید توضیح بفرستید."),
         ["statusQueued"] = ("⏳ Queued.", "⏳ در صف."),
         ["statusNext"] = ("⏳ Queued · you are next.", "⏳ در صف · نوبت بعدی مال شماست."),

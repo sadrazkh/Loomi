@@ -15,12 +15,14 @@ namespace Loomi.Telegram;
 public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient client, GenerationEvents events, IOptions<TelegramOptions> telegram,
                                IOptions<BrowserOptions> browser, BotSettings bot, QueueEstimates queue, ILogger<TelegramBotWorker> logger) : BackgroundService
 {
-    /// <summary>Plain descriptions from a chat land in this one project, so the bot can tell its own work from the same person's work on the web.</summary>
+    /// <summary>Where every plain description from a chat went before each chat became a project of its own. Only delivery still reads it, so work
+    /// queued back then, before requests were recorded, is still answered.</summary>
     public const string BotProject = "Telegram";
     /// <summary>How long a chosen template or a started edit waits for the photos or words that finish it.</summary>
     public static readonly TimeSpan PendingFor = TimeSpan.FromMinutes(30);
     public static readonly IReadOnlyList<BotCommandText> Commands =
     [
+        new("new", "Start a new chat", "شروع گفتگوی تازه"),
         new("templates", "Ready-made looks: pick one, send your photo", "قالب‌های آماده: یکی را انتخاب کنید و عکستان را بفرستید"),
         new("balance", "Your credits", "اعتبار شما"),
         new("status", "What is running", "کارهای در جریان"),
@@ -132,6 +134,7 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
         switch (text.Split(' ')[0].ToLowerInvariant())
         {
             case "/help": await HelpAsync(chat, persian, ct); return;
+            case "/new": await NewChatAsync(db, chat, persian, ct); return;
             case "/templates": await ShowCategoriesAsync(db, chat, persian, ct); return;
             case "/balance": await BalanceAsync(db, chat, user, persian, ct); return;
             case "/status": await StatusAsync(db, chat, user, persian, ct); return;
@@ -154,7 +157,7 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
         if (text.StartsWith('/')) { await HelpAsync(chat, persian, ct); return; }
         await RouteAsync(chat, persian, text, [], ct);
     }
-    /// <summary>Where a message goes: into the template or edit it completes, when one is waiting for it, or else into a new description.</summary>
+    /// <summary>Where a message goes: into the template or edit it completes, when one is waiting for it, or else into the chat's conversation.</summary>
     private async Task RouteAsync(long chat, bool persian, string text, IReadOnlyList<string> files, CancellationToken ct)
     {
         if (pending.TryGetValue(chat, out var waiting) && DateTime.UtcNow - waiting.Since < PendingFor)
@@ -199,6 +202,7 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
             case "edit": await StartEditAsync(db, chat, persian, user, id, ct); break;
             case "again": await RepeatAsync(chat, persian, id, ct); break;
             case "file": await SendOriginalAsync(db, scope, chat, persian, user, id, ct); break;
+            case "new": await NewChatAsync(db, chat, persian, ct); break;
         }
     }
     private static async Task<AppUser?> UserAsync(AppDbContext db, long chat, CancellationToken ct) =>
@@ -298,10 +302,14 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
 
     // ---- The buttons under a result: edit it, make another version, send the original file ----
 
+    /// <summary>Editing a picture goes back into its chat: that chat is the one talking from now on, whichever it was before.</summary>
     private async Task StartEditAsync(AppDbContext db, long chat, bool persian, AppUser user, Guid id, CancellationToken ct)
     {
-        if (!await db.Generations.AnyAsync(g => g.Id == id && g.UserId == user.Id && g.Status == RunStatus.Completed && g.LocalImagePath != null, ct)) { await SayAsync(chat, "NotFound", persian, ct); return; }
+        var project = await db.Generations.AsNoTracking().Where(g => g.Id == id && g.UserId == user.Id && g.Status == RunStatus.Completed && g.LocalImagePath != null)
+            .Select(g => (Guid?)g.ProjectId).FirstOrDefaultAsync(ct);
+        if (project is null) { await SayAsync(chat, "NotFound", persian, ct); return; }
         pending[chat] = new EditPending(id, DateTime.UtcNow);
+        await TalkInAsync(db, chat, project, ct);
         await SayAsync(chat, "editPrompt", persian, ct);
     }
     /// <summary>An edit continues the image's own conversation, in its own project, exactly as Edit does on the web.</summary>
@@ -348,8 +356,10 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
         await client.SendDocumentAsync(chat, await File.ReadAllBytesAsync(path, ct), $"loomi-{id:N}{Path.GetExtension(path)}", null, ct);
     }
 
-    // ---- Plain descriptions ----
+    // ---- The chat's conversation: each chat is one project, as each conversation is on the site ----
 
+    /// <summary>The next message in this chat's conversation, the way it would be typed under the last answer on the site: the picture already there is
+    /// not sent again, and photos with the message go as new references. A chat with no conversation, or one whose project is gone, starts one.</summary>
     private async Task SubmitAsync(long chat, bool persian, string prompt, IReadOnlyList<string> files, CancellationToken ct)
     {
         using var scope = scopes.CreateScope();
@@ -358,22 +368,34 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
         if (user == null) { await SayAsync(chat, "linkFirst", persian, ct); return; }
         try
         {
+            var current = await CurrentProjectAsync(db, chat, user.Id, ct);
+            // Asked before any photo is fetched, so a message refused for it leaves no uploads behind; SendAsync asks again for itself.
+            if (current is { } talking && await db.Generations.Where(g => g.ProjectId == talking).Unfinished().AnyAsync(ct)) throw new InvalidOperationException("ProjectBusy");
             if (await InputsAsync(db, scope, chat, persian, user, files, ct) is not { } inputs) return;
-            // When the model's last word to this chat was a question, the next message is the answer to it and goes into that same conversation,
-            // wherever it lives: a template's project as much as the bot's own.
-            var asked = await db.Generations.AsNoTracking().Where(g => db.BotRequests.Any(r => r.GenerationId == g.Id && r.ChatId == chat)).OrderByDescending(g => g.CreatedAt)
-                .Select(g => new { g.Id, g.ProjectId, g.Provider, g.Status, g.ConversationUrl }).FirstOrDefaultAsync(ct);
-            var project = await ProjectAsync(db, user.Id, ct);
-            // Work from before requests were recorded lives only in the bot's own project.
-            asked ??= await db.Generations.AsNoTracking().Where(g => g.ProjectId == project).OrderByDescending(g => g.CreatedAt)
-                .Select(g => new { g.Id, g.ProjectId, g.Provider, g.Status, g.ConversationUrl }).FirstOrDefaultAsync(ct);
             var service = scope.ServiceProvider.GetRequiredService<GenerationService>();
-            var generation = asked is { Status: RunStatus.Answered, ConversationUrl: not null }
-                ? await service.SubmitAsync(Viewer.For(user), asked.ProjectId, prompt, asked.Provider, Operation.Reply, asked.Id, inputs, ct)
-                : await service.SubmitAsync(Viewer.For(user), project, prompt, Provider.ChatGPT, Operation.Generate, null, inputs, ct);
+            var generation = current is { } project
+                ? await service.SendAsync(Viewer.For(user), project, prompt, inputs, null, ct)
+                : await service.StartAsync(Viewer.For(user), null, prompt, inputs, null, ct);
             await TrackAsync(db, chat, persian, generation, ct);
         }
         catch (Exception ex) when (ex is InvalidOperationException or KeyNotFoundException) { await RefusedAsync(chat, persian, ex, ct); }
+    }
+    /// <summary>The project this chat is talking in, while it still exists and is still this user's. An owner's viewer reaches every project, so ownership
+    /// is checked here by hand: a chat never talks in someone else's.</summary>
+    private static async Task<Guid?> CurrentProjectAsync(AppDbContext db, long chat, Guid user, CancellationToken ct)
+    {
+        var project = await db.TelegramLinks.AsNoTracking().Where(l => l.ChatId == chat).Select(l => l.ProjectId).FirstOrDefaultAsync(ct);
+        return project is { } id && await db.Projects.AnyAsync(p => p.Id == id && p.UserId == user, ct) ? id : null;
+    }
+    /// <summary>The project the chat's next message goes to; null makes the next message start a new one.</summary>
+    private static Task TalkInAsync(AppDbContext db, long chat, Guid? project, CancellationToken ct) =>
+        db.TelegramLinks.Where(l => l.ChatId == chat).ExecuteUpdateAsync(s => s.SetProperty(l => l.ProjectId, project), ct);
+    /// <summary>What "New chat" is on the site. A half-made template or edit would catch the next message instead, so it is dropped too.</summary>
+    private async Task NewChatAsync(AppDbContext db, long chat, bool persian, CancellationToken ct)
+    {
+        pending.TryRemove(chat, out _);
+        await TalkInAsync(db, chat, null, ct);
+        await SayAsync(chat, "newChat", persian, ct);
     }
     private Task RefusedAsync(long chat, bool persian, Exception ex, CancellationToken ct) =>
         client.SendTextAsync(chat, BotMessages.Text(ex is KeyNotFoundException ? "NotFound" : ex.Message, persian, browser.Value.MaxInputs), ct);
@@ -390,14 +412,6 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
         }
         return inputs;
     }
-    /// <summary>The bot's own project for this user, made the first time they send anything.</summary>
-    private static async Task<Guid> ProjectAsync(AppDbContext db, Guid user, CancellationToken ct)
-    {
-        if (await db.Projects.Where(p => p.UserId == user && p.Title == BotProject).Select(p => (Guid?)p.Id).FirstOrDefaultAsync(ct) is { } existing) return existing;
-        var project = new ImageProject { UserId = user, Title = BotProject };
-        db.Projects.Add(project); await db.SaveChangesAsync(ct);
-        return project.Id;
-    }
     private async Task<Guid?> UploadAsync(AppDbContext db, IServiceScope scope, Guid user, string fileId, CancellationToken ct)
     {
         var bytes = await client.DownloadAsync(fileId, Controllers.UploadsController.MaxFileBytes, ct);
@@ -412,9 +426,11 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
 
     // ---- Where the work stands, and the result ----
 
-    /// <summary>Records that this chat asked for the work, and posts the one line that will say where it stands until the result replaces it.</summary>
+    /// <summary>Records that this chat asked for the work, and posts the one line that will say where it stands until the result replaces it. The chat is
+    /// talking in the work's project from here on, whatever made it: a message, a template, an edit or another version.</summary>
     private async Task TrackAsync(AppDbContext db, long chat, bool persian, Generation generation, CancellationToken ct)
     {
+        await TalkInAsync(db, chat, generation.ProjectId, ct);
         var line = StatusLine(generation.Id, generation.UserId, RunStatus.Queued, persian);
         int? message = null;
         try { message = await client.SendTextAsync(chat, line, ct); statusLines[generation.Id] = line; }
@@ -508,6 +524,6 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
         var first = new List<BotButton> { new(BotMessages.Text("btnEdit", persian), $"edit:{moved.Id:N}") };
         if (repeatable) first.Add(new(BotMessages.Text("btnAgain", persian), $"again:{moved.Id:N}"));
         await client.SendPhotoAsync(chat, await File.ReadAllBytesAsync(path, ct), $"loomi-{moved.Id}{Path.GetExtension(path)}", caption.Length == 0 ? null : caption, ct,
-            Keys(first, Row(new BotButton(BotMessages.Text("btnFile", persian), $"file:{moved.Id:N}"))));
+            Keys(first, Row(new BotButton(BotMessages.Text("btnFile", persian), $"file:{moved.Id:N}"), new BotButton(BotMessages.Text("btnNewChat", persian), "new"))));
     }
 }

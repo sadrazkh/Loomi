@@ -101,9 +101,11 @@ public class BotPhaseTests
         Assert.Equal((template, "blue background", "Golden hour", 1), (made.TemplateId!.Value, made.Prompt, made.Project.Title, made.Inputs.Count));
         Assert.Equal(Chat, await WithDbAsync(s.Factory, db => db.BotRequests.Where(r => r.GenerationId == made.Id).Select(r => r.ChatId).SingleAsync()));
         Assert.Equal(BotMessages.Text("statusQueued", false), s.Bot.LastText);
-        // The choice is spent: the next description is an ordinary one.
+        // The choice is spent: once the picture is back, the next message is an ordinary one, carrying on in the template's chat.
+        await CompleteAsync(s, made.Id);
         await s.Worker.HandleAsync(Text("a lighthouse"), default);
-        Assert.Null((await LatestAsync(s.Factory)).TemplateId);
+        var next = await LatestAsync(s.Factory);
+        Assert.Equal(((Guid?)null, made.ProjectId), (next.TemplateId, next.ProjectId));
     }
 
     [Fact]
@@ -130,7 +132,7 @@ public class BotPhaseTests
         await CompleteAsync(s, made.Id);
         Assert.Equal((Chat, line), s.Bot.Deleted.Single());
         var buttons = s.Bot.PhotoButtons[^1]!.SelectMany(r => r).Select(b => b.Data).ToList();
-        Assert.Equal([$"edit:{made.Id:N}", $"again:{made.Id:N}", $"file:{made.Id:N}"], buttons);
+        Assert.Equal([$"edit:{made.Id:N}", $"again:{made.Id:N}", $"file:{made.Id:N}", "new"], buttons);
     }
 
     [Fact]
@@ -225,7 +227,7 @@ public class BotPhaseTests
     {
         using var s = await SetupAsync();
         await s.Worker.RegisterCommandsAsync(default);
-        Assert.Equal(["templates", "balance", "status", "cancel", "help"], s.Bot.Commands!.Select(c => c.Command));
+        Assert.Equal(["new", "templates", "balance", "status", "cancel", "help"], s.Bot.Commands!.Select(c => c.Command));
         Assert.All(s.Bot.Commands!, c => Assert.True(BotMessages.LooksPersian(c.Fa) && !BotMessages.LooksPersian(c.En)));
     }
 
