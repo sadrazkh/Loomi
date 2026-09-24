@@ -109,6 +109,20 @@ public class ChatProjectTests
         Assert.Equal(first.Id, older.Inputs.OrderBy(i => i.Order).First().SourceGenerationId);
     }
 
+    [Fact]
+    public async Task A_new_chat_is_a_new_project_named_by_its_first_message_and_a_refused_one_leaves_nothing()
+    {
+        using var w = await WorldAsync();
+        using var scope = w.Factory.Services.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<GenerationService>();
+        var started = await service.StartAsync(w.Owner, null, "a lighthouse at dusk", null, null, default);
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Equal(("a lighthouse at dusk", Operation.Generate), (await db.Projects.Where(p => p.Id == started.ProjectId).Select(p => p.Title).SingleAsync(), started.Operation));
+        var before = await db.Projects.CountAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.StartAsync(w.Owner, "empty", "", null, null, default));
+        Assert.Equal(before, await db.Projects.CountAsync());
+    }
+
     [Theory]
     [InlineData("  a   red\nbicycle  ", "a red bicycle")]
     [InlineData("", "…")]

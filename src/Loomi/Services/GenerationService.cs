@@ -31,6 +31,22 @@ public class GenerationService(AppDbContext db, IOptions<BrowserOptions> browser
         if (picture != null) return await SubmitAsync(viewer, projectId, prompt, picture.Provider, Operation.Branch, picture.Id, inputs, ct);
         return await SubmitAsync(viewer, projectId, prompt, provider ?? Provider.ChatGPT, Operation.Generate, null, inputs, ct);
     }
+    /// <summary>A new project that begins with a message, named by the message's opening words unless a title is given. Refused work leaves no empty
+    /// project behind.</summary>
+    public async Task<Generation> StartAsync(Viewer viewer, string? title, string prompt, IReadOnlyList<InputRef>? inputs, Provider? provider, CancellationToken ct)
+    {
+        var name = string.IsNullOrWhiteSpace(title) ? TitleFrom(prompt) : title.Trim();
+        var project = new ImageProject { UserId = viewer.Id, Title = name.Length <= 160 ? name : name[..160] };
+        db.Projects.Add(project);
+        await db.SaveChangesAsync(ct);
+        try { return await SendAsync(viewer, project.Id, prompt, inputs, provider, ct); }
+        catch
+        {
+            db.ChangeTracker.Clear();
+            await db.Projects.Where(p => p.Id == project.Id).ExecuteDeleteAsync(CancellationToken.None);
+            throw;
+        }
+    }
     /// <summary>The picture a conversation made last, whose conversation can still be reached: commenting on it is simply the next message there.</summary>
     private async Task<bool> LatestInReachAsync(Viewer viewer, Guid picture, CancellationToken ct)
     {
