@@ -8,10 +8,43 @@ using Microsoft.Extensions.Options;
 namespace Loomi.Services;
 public class GenerationService(AppDbContext db, IOptions<BrowserOptions> browser)
 {
+    /// <summary>A title for a project that starts from a message rather than a name: the message's opening words.</summary>
+    public static string TitleFrom(string prompt)
+    {
+        var words = string.Join(' ', prompt.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return words.Length == 0 ? "…" : words.Length <= 60 ? words : words[..60].TrimEnd() + "…";
+    }
+    /// <summary>One message into a project. A project is one conversation with the AI: while that conversation can be reached, the message continues
+    /// it on the account that holds it, and nothing already in it is sent again. When it cannot be reached, because its account was removed or
+    /// switched off, the project's latest picture opens a fresh conversation, which the project then carries on in. An empty project starts one.</summary>
+    public async Task<Generation> SendAsync(Viewer viewer, Guid projectId, string prompt, IReadOnlyList<InputRef>? inputs, Provider? provider, CancellationToken ct)
+    {
+        if (!await db.Projects.OwnedBy(viewer).AnyAsync(p => p.Id == projectId, ct)) throw new KeyNotFoundException();
+        // A conversation takes one message at a time, as it does on the site itself: the next can only follow the answer to this one.
+        if (await db.Generations.Where(g => g.ProjectId == projectId).Unfinished().AnyAsync(ct)) throw new InvalidOperationException("ProjectBusy");
+        var last = await db.Generations.AsNoTracking().Where(g => g.ProjectId == projectId && (g.Status == RunStatus.Completed || g.Status == RunStatus.Answered) && g.ConversationUrl != null)
+            .OrderByDescending(g => g.CreatedAt).FirstOrDefaultAsync(ct);
+        if (last is { AccountId: { } holder } && await db.Accounts.AnyAsync(a => a.Id == holder && a.IsEnabled, ct))
+            return await SubmitAsync(viewer, projectId, prompt, last.Provider, Operation.Reply, last.Id, inputs, ct);
+        var picture = await db.Generations.AsNoTracking().Where(g => g.ProjectId == projectId && g.Status == RunStatus.Completed && g.LocalImagePath != null)
+            .OrderByDescending(g => g.CreatedAt).FirstOrDefaultAsync(ct);
+        if (picture != null) return await SubmitAsync(viewer, projectId, prompt, picture.Provider, Operation.Branch, picture.Id, inputs, ct);
+        return await SubmitAsync(viewer, projectId, prompt, provider ?? Provider.ChatGPT, Operation.Generate, null, inputs, ct);
+    }
+    /// <summary>The picture a conversation made last, whose conversation can still be reached: commenting on it is simply the next message there.</summary>
+    private async Task<bool> LatestInReachAsync(Viewer viewer, Guid picture, CancellationToken ct)
+    {
+        var parent = await db.Generations.AsNoTracking().OwnedBy(viewer).FirstOrDefaultAsync(g => g.Id == picture, ct);
+        if (parent is not { Status: RunStatus.Completed, ConversationUrl: { } conversation, AccountId: { } holder } || !await db.Accounts.AnyAsync(a => a.Id == holder && a.IsEnabled, ct)) return false;
+        return !await db.Generations.AnyAsync(g => g.ProjectId == parent.ProjectId && g.ConversationUrl == conversation && g.Status == RunStatus.Completed && g.CreatedAt > parent.CreatedAt, ct);
+    }
     /// <summary>With a template, the prompt is only what the person added and may be empty: the template's own prompt travels beside it, hidden.</summary>
     public async Task<Generation> SubmitAsync(Viewer viewer, Guid projectId, string prompt, Provider provider, Operation operation, Guid? parentId, IReadOnlyList<InputRef>? inputs, CancellationToken ct, TemplateUse? template = null)
     {
         if ((template is null && string.IsNullOrWhiteSpace(prompt)) || prompt.Length > 12000) throw new InvalidOperationException("InvalidPrompt");
+        // Editing the picture a conversation just made is the next message in that conversation: the picture is already there, so it is not sent again.
+        // An older picture, or one whose conversation is out of reach, still goes along so the AI knows which one is meant.
+        if (operation == Operation.Edit && parentId is { } edited && await LatestInReachAsync(viewer, edited, ct)) operation = Operation.Reply;
         var refs = inputs ?? [];
         if (refs.Count > browser.Value.MaxInputs) throw new InvalidOperationException("TooManyInputs");
         // Serializable SQLite transaction keeps queue admission and deletion consistent.

@@ -189,6 +189,8 @@ public class TelegramLink
     public Guid UserId { get; set; }
     public long ChatId { get; set; }
     public DateTime LinkedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>The project this chat is talking in: its next message continues that conversation. Null starts a new project, which is what /new asks for.</summary>
+    public Guid? ProjectId { get; set; }
 }
 /// <summary>A short-lived code a user quotes to the bot to prove the chat is theirs.</summary>
 public class LinkCode

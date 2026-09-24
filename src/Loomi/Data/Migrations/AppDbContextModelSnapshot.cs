@@ -474,6 +474,9 @@ namespace Loomi.Data.Migrations
                     b.Property<DateTime>("LinkedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("ProjectId")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("TEXT");
 
