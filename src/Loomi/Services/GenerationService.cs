@@ -90,6 +90,10 @@ public class GenerationService(AppDbContext db, IOptions<BrowserOptions> browser
                 if (operation == Operation.Edit && parent.AccountId is { } holder && parent.ConversationUrl != null && await db.Accounts.AnyAsync(a => a.Id == holder && a.IsEnabled, ct)) pinned = holder;
             }
         }
+        // Anything that goes into the project's conversation waits for the answer before it, whichever door it came through: the web, the API, the
+        // bot's edit button. A second message typed into a chat that is still drawing would land in the middle of that drawing. Checked after the
+        // parent, so a turn that has no conversation at all says so rather than "busy".
+        if (operation is Operation.Reply or Operation.Edit && await db.Generations.Where(g => g.ProjectId == projectId).Unfinished().AnyAsync(ct)) throw new InvalidOperationException("ProjectBusy");
         // A reply sends what the person attached and nothing else: the picture before it is already in the conversation.
         var ordered = await InputsAsync(viewer, operation == Operation.Reply ? null : parentId, refs, ct);
         if (ordered.Count > browser.Value.MaxInputs) throw new InvalidOperationException("TooManyInputs");

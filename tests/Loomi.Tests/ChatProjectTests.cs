@@ -110,6 +110,16 @@ public class ChatProjectTests
     }
 
     [Fact]
+    public async Task An_edit_waits_for_the_answer_before_it_like_any_other_message()
+    {
+        using var w = await WorldAsync();
+        var first = await SendAsync(w, "a red bicycle");
+        await FinishAsync(w, first.Id);
+        await SendAsync(w, "make it blue");
+        Assert.Equal("ProjectBusy", (await Assert.ThrowsAsync<InvalidOperationException>(() => SubmitAsync(w, Operation.Edit, first.Id, "and green"))).Message);
+    }
+
+    [Fact]
     public async Task A_new_chat_is_a_new_project_named_by_its_first_message_and_a_refused_one_leaves_nothing()
     {
         using var w = await WorldAsync();

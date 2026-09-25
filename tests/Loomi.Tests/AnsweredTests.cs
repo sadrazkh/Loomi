@@ -318,10 +318,12 @@ public class AnsweredTests
         var (withThread, withoutThread, running) = await WithDbAsync(factory, async db =>
         {
             var project = new ImageProject { UserId = sara, Title = "sara's" };
+            // The running turn is a chat of its own: a project is one conversation, and one still drawing would make every reply in it wait.
+            var elsewhere = new ImageProject { UserId = sara, Title = "still drawing" };
             var a = new Generation { ProjectId = project.Id, UserId = sara, Prompt = "asked", Status = RunStatus.Answered, AccountId = account, ConversationUrl = "https://chatgpt.com/c/thread", ReplyText = "Which style?" };
             var b = new Generation { ProjectId = project.Id, UserId = sara, Prompt = "no thread", Status = RunStatus.Answered, AccountId = account };
-            var c = new Generation { ProjectId = project.Id, UserId = sara, Prompt = "busy", Status = RunStatus.WaitingForResponse, AccountId = account, ConversationUrl = "https://chatgpt.com/c/busy" };
-            db.Projects.Add(project); db.Generations.AddRange(a, b, c); await db.SaveChangesAsync();
+            var c = new Generation { ProjectId = elsewhere.Id, UserId = sara, Prompt = "busy", Status = RunStatus.WaitingForResponse, AccountId = account, ConversationUrl = "https://chatgpt.com/c/busy" };
+            db.Projects.AddRange(project, elsewhere); db.Generations.AddRange(a, b, c); await db.SaveChangesAsync();
             return (a.Id, b.Id, c.Id);
         });
         using var client = await SignInAsync(factory, "sara", "sara-strong-pass");

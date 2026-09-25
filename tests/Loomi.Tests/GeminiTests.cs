@@ -286,6 +286,8 @@ public class GeminiTests
         Assert.Equal((Provider.Gemini, 5), await db.Generations.Where(g => g.Id == gemini).Select(g => new ValueTuple<Provider, int>(g.Provider, g.CreditCost)).SingleAsync());
         // Edit and branch belong to the parent's world and never change providers underneath it.
         await db.Generations.Where(g => g.Id == gemini).ExecuteUpdateAsync(s => s.SetProperty(g => g.Status, RunStatus.Completed).SetProperty(g => g.LocalImagePath, "projects/x/y.png"));
+        // An edit waits for the chat's last answer, so the other request in this project is settled first.
+        await db.Generations.Where(g => g.Id == byDefault).ExecuteUpdateAsync(s => s.SetProperty(g => g.Status, RunStatus.Cancelled));
         var edited = await Queued(client, project, new { prompt = "warmer" }, $"/api/generations/{gemini}/edit");
         Assert.Equal(Provider.Gemini, await db.Generations.Where(g => g.Id == edited).Select(g => g.Provider).SingleAsync());
     }

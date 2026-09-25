@@ -203,6 +203,8 @@ public class InputTests
         var earlier = await CompletedAsync(factory, sara, project);
         var alone = await (await client.PostAsJsonAsync($"/api/projects/{project}/generate", new { prompt = "more of this", inputs = new[] { new { generationId = earlier } } })).Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(earlier, alone.GetProperty("parentGenerationId").GetGuid());
+        // An edit waits for the chat's last answer, so that request is settled before the edit is sent.
+        await WithDbAsync(factory, db => db.Generations.Where(g => g.Id == alone.GetProperty("id").GetGuid()).ExecuteUpdateAsync(s => s.SetProperty(g => g.Status, RunStatus.Cancelled)));
         var upload = await OneUploadAsync(client);
         var edited = await client.PostAsJsonAsync($"/api/generations/{earlier}/edit", new { prompt = "add this", inputs = new[] { new { uploadId = upload } } });
         Assert.Equal(HttpStatusCode.Accepted, edited.StatusCode);
