@@ -141,6 +141,9 @@ public class ApiV1Tests
             var refused = await StartAsync(api, bad);
             Assert.Equal((HttpStatusCode.BadRequest, code), (refused.StatusCode, await ApiV1World.ErrorAsync(refused)));
         }
+        // What curl -d sends when nobody says the body is JSON.
+        var form = await api.PostAsync("/api/v1/chats", new StringContent("prompt=a cat", Encoding.UTF8, "application/x-www-form-urlencoded"));
+        Assert.Equal((HttpStatusCode.UnsupportedMediaType, "UnsupportedMediaType"), (form.StatusCode, await ApiV1World.ErrorAsync(form)));
         Assert.Equal(2, await w.DbAsync(db => db.Projects.CountAsync(p => p.UserId == member)));
     }
 
