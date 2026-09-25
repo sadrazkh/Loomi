@@ -26,6 +26,8 @@ public class BrowserOptions
     /// <summary>How long a turn may sit with nothing on the page — no reply, no picture, no stop control, nothing in progress — before it is given up on.
     /// Only reached when the reply and progress hooks have both drifted; it bounds the wait instead of letting it run to the full timeout.</summary>
     public int QuietSeconds { get; set; } = 45;
+    /// <summary>How long an opened conversation may take to show its earlier turns before the run goes on regardless.</summary>
+    public int ConversationLoadSeconds { get; set; } = 10;
     /// <summary>Bring every enabled account up when the server starts. A deployment restarts on every update, and without this each restart left the
     /// accounts disconnected, with the UI telling everyone to wait, until the owner came back and pressed Connect.</summary>
     public bool ConnectOnStart { get; set; } = true;

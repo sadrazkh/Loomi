@@ -101,6 +101,15 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
         await db.SaveChangesAsync(ct);
         return orphans.Count;
     }
+    /// <summary>Digests of every picture this conversation has already produced. Continuing it, the browser can then refuse to hand back one of them as
+    /// the answer, whatever the page does; a follow-up once came back with the previous picture because the page drew it after the prompt went.</summary>
+    private async Task<HashSet<string>> KnownImagesAsync(AppDbContext db, Guid project, string thread, CancellationToken ct)
+    {
+        var known = new HashSet<string>();
+        foreach (var path in await db.Generations.AsNoTracking().Where(x => x.ProjectId == project && x.ConversationUrl == thread && x.LocalImagePath != null).Select(x => x.LocalImagePath!).ToListAsync(ct))
+            if (File.Exists(storage.Resolve(path))) known.Add(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(await File.ReadAllBytesAsync(storage.Resolve(path), ct))));
+        return known;
+    }
     /// <summary>The files to send, in the order recorded. A row queued before inputs existed carries only its parent, which is still sent; a file gone since then fails the run rather than quietly sending fewer.</summary>
     private async Task<List<string>> InputPathsAsync(AppDbContext db, Generation g, Generation? parent, CancellationToken ct)
     {
@@ -214,7 +223,8 @@ public class GenerationWorker(IServiceScopeFactory scopes, ProviderRegistry prov
             try
             {
                 Generation? parent = g.ParentGenerationId == null ? null : await db.Generations.FindAsync([g.ParentGenerationId.Value], ct);
-                var request = new GenerationRequest(account.Provider, g.Operation, TemplateService.PromptFor(g), await InputPathsAsync(db, g, parent, ct), parent?.ConversationUrl);
+                var request = new GenerationRequest(account.Provider, g.Operation, TemplateService.PromptFor(g), await InputPathsAsync(db, g, parent, ct), parent?.ConversationUrl,
+                    parent?.ConversationUrl is { } thread ? await KnownImagesAsync(db, g.ProjectId, thread, ct) : null);
                 var result = await providers.For(account.Provider).RunAsync(account, request, Report, ct);
                 // A provider without a conversation leaves the project's last link alone rather than blanking it.
                 if (result.ConversationUrl != null) { g.ConversationUrl = result.ConversationUrl; g.Project.ConversationUrl = result.ConversationUrl; }

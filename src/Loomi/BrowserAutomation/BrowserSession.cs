@@ -12,7 +12,7 @@ public record BrowserResult(byte[]? Image, string? ConversationUrl, string? Repl
 /// <summary>Reports progress and, when first seen, the conversation URL, so a run that later fails still leaves the chat on the row.</summary>
 public delegate Task ReportStatus(RunStatus status, string? conversation = null);
 /// <summary>One ChatGPT account's browser: its own profile, page and gate, so two accounts never wait on each other.</summary>
-public sealed class BrowserSession(string directory, IOptions<BrowserOptions> options, IConfiguration config, IChromiumLauncher launcher) : IAsyncDisposable
+public sealed class BrowserSession(string directory, IOptions<BrowserOptions> options, IConfiguration config, IChromiumLauncher launcher, ILogger? logger = null) : IAsyncDisposable
 {
     private readonly BrowserOptions settings = options.Value;
     private readonly string profile = ProfilePath(config["Storage:Root"] ?? "Storage", directory);
@@ -115,9 +115,10 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
         }
         catch (PlaywrightException) { state = "Disconnected"; }
     }
-    public async Task<BrowserResult> RunAsync(Operation operation, string prompt, IReadOnlyList<string> inputs, string? conversation, ReportStatus report, CancellationToken ct)
+    public async Task<BrowserResult> RunAsync(Operation operation, string prompt, IReadOnlyList<string> inputs, string? conversation, ReportStatus report, CancellationToken ct, IReadOnlySet<string>? knownImages = null)
     {
         await gate.WaitAsync(ct);
+        var step = "opening the browser";
         try
         {
             await report(RunStatus.OpeningBrowser);
@@ -126,14 +127,20 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             // Continuing a thread goes back into it. A conversation the site has since dropped lands on the home page instead, and starting a fresh chat
             // there would answer the person with none of what came before, so that is refused rather than done quietly.
             var continuing = operation is Operation.Edit or Operation.Reply && conversation != null;
+            step = continuing ? "opening the conversation" : "opening ChatGPT";
             await NavigateAsync(continuing ? conversation! : "https://chatgpt.com/");
+            step = "waiting for the message box";
             await Visible($"{settings.Selectors.Composer}, {settings.Selectors.QuestionForm}").First.WaitForAsync();
             if (continuing && !IsConversation(page!.Url)) throw new InvalidOperationException("ConversationNotSaved");
+            if (continuing) { step = "waiting for the conversation to load"; await SettleConversationAsync(ct); }
             await DetectAsync();
             if (state != "Connected") throw new InvalidOperationException(state == "VerificationRequired" ? "VerificationRequired" : "LoginRequired");
             ct.ThrowIfCancellationRequested();
+            step = "clearing old attachments";
             await ClearAttachmentsAsync(ct);
+            step = "attaching pictures";
             if (inputs.Count > 0) await AttachAsync(inputs, ct);
+            step = "reading the page";
             var before = await page!.Locator(settings.Selectors.Assistant).CountAsync();
             // Counted across the page, not inside the reply: the site renders a generated image in the conversation turn,
             // outside the assistant message element, so scoping the search there finds nothing however new the image is.
@@ -141,20 +148,25 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             var pendingBefore = await page.Locator(settings.Selectors.ImagePending).CountAsync();
             // A question already waiting on this page is the one being answered; only a different one afterwards is a new question.
             var askedBefore = await QuestionAsync();
+            var shown = await ImageKeysAsync();
             await report(RunStatus.SendingPrompt);
             // Never retry submission: a timeout after sending may still have accepted the prompt.
             if (askedBefore != null && await Visible(settings.Selectors.Composer).CountAsync() == 0)
             {
                 // The model asked and is waiting: the answer goes into the question's own field, as a person would type it there.
+                step = "answering the question";
                 var field = Visible(settings.Selectors.QuestionForm).First.Locator(settings.Selectors.QuestionInput).First;
                 await field.FillAsync(prompt);
                 await field.PressAsync("Enter");
             }
             else
             {
+                step = "typing the message";
                 await Visible(settings.Selectors.Composer).First.FillAsync(prompt);
+                step = "pressing send";
                 await Visible(settings.Selectors.Send).First.ClickAsync();
             }
+            step = "waiting for the answer";
             await report(RunStatus.WaitingForResponse);
             var deadline = DateTime.UtcNow.AddSeconds(settings.GenerationTimeoutSeconds);
             string? previous = null, lastWords = null;
@@ -175,8 +187,10 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
                 if (await images.CountAsync() > imagesBefore && await image.IsVisibleAsync())
                 {
                     quietSince = null;
-                    if (!announced) { await report(RunStatus.GeneratingImage); announced = true; }
                     var source = await image.EvaluateAsync<string>("el => el.complete && el.naturalWidth >= 256 && el.naturalHeight >= 256 ? el.currentSrc : ''");
+                    // A picture the page already showed before the prompt went, only drawn late: part of the conversation, not the answer to it.
+                    if (source.Length > 0 && shown.Contains(ImageKey(source))) { imagesBefore = await images.CountAsync(); previous = null; stableSince = null; continue; }
+                    if (!announced) { await report(RunStatus.GeneratingImage); announced = true; }
                     if (string.IsNullOrEmpty(source) || stopping) { stableSince = null; continue; }
                     if (source != previous || stableSince == null) { previous = source; stableSince = DateTime.UtcNow; continue; }
                     if ((DateTime.UtcNow - stableSince.Value).TotalSeconds < settings.StableSeconds) continue;
@@ -202,7 +216,11 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
                       return await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result.split(',')[1]); r.onerror = reject; r.readAsDataURL(blob); });
                     }
                     """);
-                    return new(Convert.FromBase64String(base64), await SettledUrlAsync(ct));
+                    var picture = Convert.FromBase64String(base64);
+                    // The last guard: bytes the conversation already produced are its history, however late the page drew them. Keep waiting for a new one.
+                    if (knownImages is { Count: > 0 } && knownImages.Contains(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(picture))))
+                    { imagesBefore = await images.CountAsync(); shown.Add(ImageKey(source)); previous = null; stableSince = null; continue; }
+                    return new(picture, await SettledUrlAsync(ct));
                 }
                 // No picture yet. One still on its way keeps the turn open however quiet the rest of the page is: on the live site the stop control
                 // goes several seconds before the picture lands, and judging the turn over at that moment is what made successes a matter of luck.
@@ -240,7 +258,52 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             }
             throw new InvalidOperationException("GenerationTimeout");
         }
+        catch (PlaywrightException ex) when (!ct.IsCancellationRequested)
+        {
+            await RecordFailureAsync(step, ex);
+            throw;
+        }
         finally { gate.Release(); }
+    }
+    /// <summary>A conversation opens with its message box first and its earlier turns a moment later, pictures last. Counted before they arrive, the
+    /// conversation's own last picture turned up after the prompt was sent and was taken for the answer: a follow-up came back with the previous
+    /// image, or, on a slower server, sat waiting on it until it timed out. Waits until something of the conversation is on the page and the page has
+    /// stopped changing; a conversation that shows nothing for the whole allowance is left as it is.</summary>
+    private async Task SettleConversationAsync(CancellationToken ct)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(settings.ConversationLoadSeconds);
+        (int Images, int Replies)? last = null;
+        var since = DateTime.UtcNow;
+        while (DateTime.UtcNow < deadline)
+        {
+            (int Images, int Replies) now = (await page!.Locator(settings.Selectors.GeneratedImage).CountAsync(), await page.Locator(settings.Selectors.Assistant).CountAsync());
+            if (now != last) { (last, since) = (now, DateTime.UtcNow); }
+            else if (now.Images + now.Replies > 0 && DateTime.UtcNow - since >= TimeSpan.FromSeconds(2)) return;
+            await Task.Delay(400, ct);
+        }
+    }
+    /// <summary>The same key on both sides of the page: length and both ends of the address, enough to tell pictures apart without carrying megabytes of data URL.</summary>
+    public static string ImageKey(string source) => $"{source.Length}:{source[..Math.Min(64, source.Length)]}:{source[^Math.Min(64, source.Length)..]}";
+    private async Task<HashSet<string>> ImageKeysAsync() =>
+        [.. (await page!.Locator(settings.Selectors.GeneratedImage).EvaluateAllAsync<string[]>(
+            "els => els.map(e => { const s = e.currentSrc || e.src || ''; return s ? s.length + ':' + s.slice(0, 64) + ':' + s.slice(-Math.min(64, s.length)) : ''; })")).Where(k => k.Length > 0)];
+    /// <summary>Which step a run stopped at, and what the page showed then. The exception's text is not logged, as it can carry page content; the step
+    /// says where to look, and the screenshot, kept on the server beside the data it shows, says what the site was doing. The site's pages change
+    /// every few weeks and every change reads the same from outside, so this is how the next one gets found in minutes rather than guessed at.</summary>
+    private async Task RecordFailureAsync(string step, Exception ex)
+    {
+        var where = page?.Url is { } url && Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            ? uri.AbsolutePath == "/" ? "home" : uri.AbsolutePath.StartsWith("/c/") ? "conversation" : uri.Host : "no";
+        logger?.LogWarning("Browser run stopped while {Step}, on the {Page} page ({Type})", step, where, ex.GetType().Name);
+        if (page is null or { IsClosed: true }) return;
+        try
+        {
+            var folder = Path.Combine(Path.GetFullPath(config["Storage:Root"] ?? "Storage"), "diagnostics");
+            Directory.CreateDirectory(folder);
+            await page.ScreenshotAsync(new() { Path = Path.Combine(folder, $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{step.Replace(' ', '-')}.png"), Timeout = 5000 });
+            foreach (var old in new DirectoryInfo(folder).GetFiles("*.png").OrderByDescending(f => f.CreationTimeUtc).Skip(20)) old.Delete();
+        }
+        catch (Exception shot) when (shot is PlaywrightException or IOException) { logger?.LogDebug("No screenshot of the failed run ({Type})", shot.GetType().Name); }
     }
     /// <summary>Sends the files through the composer's own input. One that takes several at once gets them in a single call; one that does not gets them one by one,
     /// the site adding each to its attachments. Either way the run waits until every file shows its remove control and nothing is still uploading.</summary>

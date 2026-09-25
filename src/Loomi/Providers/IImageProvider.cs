@@ -2,7 +2,8 @@ using Loomi.BrowserAutomation;
 using Loomi.Models;
 namespace Loomi.Providers;
 /// <summary>What the dispatcher hands a provider: everything about the work, none of the database row.</summary>
-public record GenerationRequest(Provider Provider, Operation Operation, string Prompt, IReadOnlyList<string> InputPaths, string? ParentConversation);
+/// <summary>KnownImages are the SHA-256 digests of the pictures the conversation already holds, so an old one the page renders late is never mistaken for the answer.</summary>
+public record GenerationRequest(Provider Provider, Operation Operation, string Prompt, IReadOnlyList<string> InputPaths, string? ParentConversation, IReadOnlySet<string>? KnownImages = null);
 /// <summary>One way of turning a prompt into an image. A browser drives a site; an API key calls one. The dispatcher only knows this.</summary>
 public interface IImageProvider
 {

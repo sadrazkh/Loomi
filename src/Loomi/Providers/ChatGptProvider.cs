@@ -12,6 +12,6 @@ public sealed class ChatGptProvider(BrowserPool pool) : IImageProvider
     public Task<ConnectionStatus> ConnectAsync(ProviderAccount account, CancellationToken ct) => pool.RunAsync(account, s => s.ConnectAsync(ct));
     public Task ResetAsync(ProviderAccount account, CancellationToken ct) => pool.RunAsync(account, s => s.ResetAsync(ct));
     public Task<BrowserResult> RunAsync(ProviderAccount account, GenerationRequest request, ReportStatus report, CancellationToken ct)
-        => pool.RunAsync(account, s => s.RunAsync(request.Operation, request.Prompt, request.InputPaths, request.ParentConversation, report, ct));
+        => pool.RunAsync(account, s => s.RunAsync(request.Operation, request.Prompt, request.InputPaths, request.ParentConversation, report, ct, request.KnownImages));
     public Task DiscardAsync(Guid accountId) => pool.DiscardAsync(accountId);
 }
