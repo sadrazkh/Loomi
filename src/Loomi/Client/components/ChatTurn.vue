@@ -1,7 +1,8 @@
 <script setup>
 import { Pencil, GitBranch, Download, ExternalLink, LoaderCircle, Bot, X, LayoutTemplate } from 'lucide-vue-next';
 import { queueText } from './queue.js';
-defineProps({ generation:Object, t:Function, number:Number, parentNumber:Number, locale:String, queue:Object });
+// Latest: the chat's newest picture, which the next message works on anyway, so editing it needs nothing sent again.
+defineProps({ generation:Object, t:Function, number:Number, parentNumber:Number, locale:String, queue:Object, latest:Boolean });
 defineEmits(['edit','branch','preview','cancel']);
 const settled = g => ['Completed','Answered','Failed','Cancelled'].includes(g.status);
 </script>
@@ -13,6 +14,6 @@ const settled = g => ['Completed','Answered','Failed','Cancelled'].includes(g.st
   <p v-else-if="generation.replyText" class="turn-reply" dir="auto">{{ generation.replyText }}</p>
   <div v-else-if="!settled(generation)" class="turn-progress" role="status"><LoaderCircle class="spin"/><span>{{ t(generation.status) }}<small v-if="generation.status==='Queued'&&queue" class="queue-note">{{ queueText(queue,t,locale) }}</small></span></div>
   <p v-else class="error-text turn-error">{{ t(generation.errorMessage||generation.status) }} <small v-if="generation.errorMessage">{{ t('retryHint') }}</small></p>
-  <footer v-if="generation.imageUrl||generation.conversationUrl||!settled(generation)"><template v-if="generation.imageUrl"><button @click="$emit('edit',generation)"><Pencil/>{{ t('edit') }}</button><button @click="$emit('branch',generation)"><GitBranch/>{{ t('branch') }}</button></template><button v-if="!settled(generation)" class="danger" @click="$emit('cancel',generation)"><X/>{{ t('cancel') }}</button><span class="grow"/><a v-if="generation.imageUrl" class="icon-button" :href="generation.imageUrl" :download="`loomi-${generation.id}`" :aria-label="t('download')"><Download/></a><a v-if="generation.conversationUrl" class="icon-button" :href="generation.conversationUrl" target="_blank" rel="noopener noreferrer" :aria-label="t('viewChat')"><ExternalLink/></a></footer>
+  <footer v-if="generation.imageUrl||generation.conversationUrl||!settled(generation)"><template v-if="generation.imageUrl"><button :title="t(latest?'chatEditHint':'chatEditOlderHint')" @click="$emit('edit',generation)"><Pencil/>{{ t('edit') }}</button><button :title="t('chatBranchHint')" @click="$emit('branch',generation)"><GitBranch/>{{ t('chatNew') }}</button></template><button v-if="!settled(generation)" class="danger" @click="$emit('cancel',generation)"><X/>{{ t('cancel') }}</button><span class="grow"/><a v-if="generation.imageUrl" class="icon-button" :href="generation.imageUrl" :download="`loomi-${generation.id}`" :aria-label="t('download')"><Download/></a><a v-if="generation.conversationUrl" class="icon-button" :href="generation.conversationUrl" target="_blank" rel="noopener noreferrer" :aria-label="t('viewChat')"><ExternalLink/></a></footer>
  </div></div>
 </article></template>
