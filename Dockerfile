@@ -15,7 +15,9 @@ COPY --from=client /wwwroot/dist/ src/Loomi/wwwroot/dist/
 RUN dotnet publish src/Loomi/Loomi.csproj -c Release -o /app --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble AS runtime
-LABEL org.opencontainers.image.title="Loomi" org.opencontainers.image.source="https://github.com/sadrazkh/Loomi"
+# Bumping the revision rebuilds the runtime stage from scratch. On Harbora that is the way past a cached layer the server can no longer restore:
+# removing an older build image breaks the cache chain of the images built on it.
+LABEL org.opencontainers.image.title="Loomi" org.opencontainers.image.source="https://github.com/sadrazkh/Loomi" org.opencontainers.image.revision="2"
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends tini xvfb x11vnc novnc websockify fluxbox python3 curl ca-certificates sqlite3 \
     libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 libx11-6 libxcomposite1 libxdamage1 libxext6 libxfixes3 libxrandr2 libgbm1 libdrm2 libxcb1 libxkbcommon0 libasound2t64 libcups2 libdbus-1-3 libpango-1.0-0 libcairo2 fonts-liberation fonts-noto-core \
