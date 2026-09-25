@@ -20,7 +20,7 @@ public class UnconfiguredFactory(string environment, string? accessKey) : WebApp
         builder.UseSetting("Storage:Root", Root);
         builder.ConfigureServices(services => { services.RemoveAll<IHostedService>(); AppFactory.Unpooled(services, Root); });
     }
-    protected override void Dispose(bool disposing) { base.Dispose(disposing); if (Directory.Exists(Root)) try { Directory.Delete(Root, true); } catch (IOException) { /* a file a browser still holds is a temp folder the machine will sweep */ } }
+    protected override void Dispose(bool disposing) { base.Dispose(disposing); if (Directory.Exists(Root)) try { Directory.Delete(Root, true); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* a file a browser or the instance lease still holds is a temp folder the machine will sweep */ } }
 }
 public class DevelopmentAccessTests
 {

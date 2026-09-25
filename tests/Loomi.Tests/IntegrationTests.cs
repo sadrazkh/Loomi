@@ -32,7 +32,7 @@ public class AppFactory : WebApplicationFactory<Program>
         foreach (var registered in services.Where(d => d.ServiceType.Name.Contains("DbContextOptions")).ToList()) services.Remove(registered);
         services.AddDbContext<AppDbContext>(o => o.UseSqlite($"Data Source={Path.Combine(root, "loomi.db")};Foreign Keys=True;Default Timeout=30;Pooling=False"));
     }
-    protected override void Dispose(bool disposing) { base.Dispose(disposing); if (Directory.Exists(Root)) try { Directory.Delete(Root, true); } catch (IOException) { /* a file a browser still holds is a temp folder the machine will sweep */ } }
+    protected override void Dispose(bool disposing) { base.Dispose(disposing); if (Directory.Exists(Root)) try { Directory.Delete(Root, true); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* a file a browser or the instance lease still holds is a temp folder the machine will sweep */ } }
 }
 public class IntegrationTests
 {
