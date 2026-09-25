@@ -31,10 +31,25 @@ public class ProjectsController(AppDbContext db, ProjectRepository projects, Gen
         if (!await db.Projects.OwnedBy(Me).AnyAsync(x => x.Id == id, ct)) return NotFound();
         return Ok((await db.Generations.AsNoTracking().Include(g => g.Inputs).Where(g => g.ProjectId == id).OrderBy(g => g.CreatedAt).ToListAsync(ct)).Select(GenerationDto.From));
     }
+    /// <summary>Opens a new conversation inside the project. Kept for callers written before a project was one conversation; the web sends messages.</summary>
     [HttpPost("{id:guid}/generate")] public async Task<IActionResult> Generate(Guid id, PromptRequest request, CancellationToken ct)
     {
         var g = await generations.SubmitAsync(Me, id, request.Prompt, request.Provider ?? Provider.ChatGPT, Operation.Generate, null, request.Inputs, ct);
         return Accepted($"/api/generations/{g.Id}", GenerationDto.From(g));
+    }
+    /// <summary>The next message in the project's one conversation. Whether that continues it, reopens it from the latest picture or starts it is the
+    /// server's call, so the caller never picks a turn to reply to and never sends a picture the conversation already has.</summary>
+    [HttpPost("{id:guid}/messages")] public async Task<IActionResult> Message(Guid id, PromptRequest request, CancellationToken ct)
+    {
+        var g = await generations.SendAsync(Me, id, request.Prompt, request.Inputs, request.Provider, ct);
+        return Accepted($"/api/generations/{g.Id}", GenerationDto.From(g));
+    }
+    /// <summary>A new chat: a new project and its first message in one call, so a refused message leaves no empty project behind. A picture from
+    /// another chat goes along as a reference, which is how a branch becomes a chat of its own.</summary>
+    [HttpPost("start")] public async Task<IActionResult> Start(StartChat request, CancellationToken ct)
+    {
+        var g = await generations.StartAsync(Me, request.Title, request.Prompt, request.Inputs, request.Provider, ct);
+        return Created($"/api/projects/{g.ProjectId}", new { project = await projects.GetAsync(Me, g.ProjectId, ct), generation = GenerationDto.From(g) });
     }
     [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
