@@ -15,6 +15,8 @@ public class FixtureLauncher : IChromiumLauncher, IAsyncDisposable
     public List<string> Visits { get; } = [];
     /// <summary>Replaces the ChatGPT stand-in, so tests can serve an interstitial instead.</summary>
     public string? Body { get; init; }
+    /// <summary>How long any address under /slow/ takes to answer, so a page can be made to finish loading well after it has drawn.</summary>
+    public int SlowMs { get; init; }
     /// <summary>The stand-in composer. Attachments accumulate across change events and each one renders its own remove button, which is how the real site behaves whether or not its input takes several files at once.</summary>
     public static string BodyWith(bool multiple) => $$"""
         <html><body>
@@ -52,6 +54,7 @@ public class FixtureLauncher : IChromiumLauncher, IAsyncDisposable
         await context.RouteAsync("**/*", async route =>
         {
             Visits.Add(route.Request.Url);
+            if (route.Request.Url.Contains("/slow/")) await Task.Delay(SlowMs);
             await route.FulfillAsync(new() { ContentType = "text/html", Body = Body ?? BodyWith(true) });
         });
         return context;

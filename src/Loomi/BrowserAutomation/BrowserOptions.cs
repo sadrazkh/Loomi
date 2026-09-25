@@ -11,6 +11,13 @@ public class BrowserOptions
     /// <summary>Loopback port of the noVNC service. Only Docker runs one; a direct run has no remote desktop.</summary>
     public int DesktopPort { get; set; } = 6080;
     public int NavigationTimeoutMs { get; set; } = 60000;
+    /// <summary>How long a click, a fill or a wait for one control may take when nothing more specific applies.</summary>
+    public int ActionTimeoutMs { get; set; } = 20000;
+    /// <summary>How long reopening a conversation may take, from its address to its message box. On the live site a full load of any conversation took
+    /// 35 to 55 seconds (the home page 8 to 14), the site fetching the whole thread before it shows the box: with only the 20 seconds every other
+    /// control gets, every follow-up in a chat failed while every first message worked. Nothing has been sent while this runs, so waiting costs no more
+    /// than time.</summary>
+    public int ConversationOpenSeconds { get; set; } = 150;
     /// <summary>How long to let the site render before judging the connection state.</summary>
     public int SettleTimeoutMs { get; set; } = 15000;
     public int GenerationTimeoutSeconds { get; set; } = 600;

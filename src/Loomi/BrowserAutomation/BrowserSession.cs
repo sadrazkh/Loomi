@@ -77,7 +77,7 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
         if (context != null) { try { await context.CloseAsync(); } catch (PlaywrightException) { } }
         Directory.CreateDirectory(profile);
         context = await launcher.LaunchAsync(profile, settings);
-        context.SetDefaultTimeout(20000);
+        context.SetDefaultTimeout(settings.ActionTimeoutMs);
         context.SetDefaultNavigationTimeout(settings.NavigationTimeoutMs);
         page = context.Pages.FirstOrDefault() ?? await context.NewPageAsync();
         await NavigateAsync("https://chatgpt.com/");
@@ -92,13 +92,13 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
         try { await Visible(signals).First.WaitForAsync(new() { Timeout = settings.SettleTimeoutMs }); }
         catch (TimeoutException) { }
     }
-    private async Task NavigateAsync(string url)
+    private async Task NavigateAsync(string url, float? timeout = null)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != "https" || uri.Host != "chatgpt.com" || !(uri.AbsolutePath == "/" || uri.AbsolutePath.StartsWith("/c/")))
             throw new InvalidOperationException("InvalidConversation");
         for (var attempt = 0; ; attempt++)
         {
-            try { await page!.GotoAsync(url, new() { WaitUntil = WaitUntilState.DOMContentLoaded }); return; }
+            try { await page!.GotoAsync(url, new() { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = timeout }); return; }
             catch (PlaywrightException) when (attempt < 2) { await Task.Delay(1000 * (attempt + 1)); }
         }
     }
@@ -128,9 +128,12 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             // there would answer the person with none of what came before, so that is refused rather than done quietly.
             var continuing = operation is Operation.Edit or Operation.Reply && conversation != null;
             step = continuing ? "opening the conversation" : "opening ChatGPT";
-            await NavigateAsync(continuing ? conversation! : "https://chatgpt.com/");
+            // One allowance for the whole opening, the address and the box together, so a slow load is not granted it twice.
+            var allowance = continuing ? settings.ConversationOpenSeconds * 1000 : settings.NavigationTimeoutMs;
+            var opened = DateTime.UtcNow.AddMilliseconds(allowance);
+            await NavigateAsync(continuing ? conversation! : "https://chatgpt.com/", allowance);
             step = "waiting for the message box";
-            await Visible($"{settings.Selectors.Composer}, {settings.Selectors.QuestionForm}").First.WaitForAsync();
+            await Visible($"{settings.Selectors.Composer}, {settings.Selectors.QuestionForm}").First.WaitForAsync(new() { Timeout = (float)Math.Max(1000, (opened - DateTime.UtcNow).TotalMilliseconds) });
             if (continuing && !IsConversation(page!.Url)) throw new InvalidOperationException("ConversationNotSaved");
             if (continuing) { step = "waiting for the conversation to load"; await SettleConversationAsync(ct); }
             await DetectAsync();
@@ -138,8 +141,13 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             ct.ThrowIfCancellationRequested();
             step = "clearing old attachments";
             await ClearAttachmentsAsync(ct);
-            step = "attaching pictures";
-            if (inputs.Count > 0) await AttachAsync(inputs, ct);
+            if (inputs.Count > 0)
+            {
+                step = "waiting for the page to load";
+                await LoadedAsync();
+                step = "attaching pictures";
+                await AttachAsync(inputs, ct);
+            }
             step = "reading the page";
             var before = await page!.Locator(settings.Selectors.Assistant).CountAsync();
             // Counted across the page, not inside the reply: the site renders a generated image in the conversation turn,
@@ -258,7 +266,10 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             }
             throw new InvalidOperationException("GenerationTimeout");
         }
-        catch (PlaywrightException ex) when (!ct.IsCancellationRequested)
+        // Every way a run can stop short is recorded, the run's own verdicts (an upload that never finished, a reply without a picture) as much as the
+        // browser's. Playwright for .NET reports a wait that ran out as System.TimeoutException, not a PlaywrightException: caught by that alone, the
+        // most common failure of all went unrecorded.
+        catch (Exception ex) when (ex is not OperationCanceledException && !ct.IsCancellationRequested)
         {
             await RecordFailureAsync(step, ex);
             throw;
@@ -294,7 +305,8 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
     {
         var where = page?.Url is { } url && Uri.TryCreate(url, UriKind.Absolute, out var uri)
             ? uri.AbsolutePath == "/" ? "home" : uri.AbsolutePath.StartsWith("/c/") ? "conversation" : uri.Host : "no";
-        logger?.LogWarning("Browser run stopped while {Step}, on the {Page} page ({Type})", step, where, ex.GetType().Name);
+        var facts = page is { IsClosed: false } ? await FactsAsync() : "";
+        logger?.LogWarning("Browser run stopped while {Step}, on the {Page} page ({Type}); {Facts}", step, where, ex.GetType().Name, facts);
         if (page is null or { IsClosed: true }) return;
         try
         {
@@ -304,6 +316,39 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             foreach (var old in new DirectoryInfo(folder).GetFiles("*.png").OrderByDescending(f => f.CreationTimeUtc).Skip(20)) old.Delete();
         }
         catch (Exception shot) when (shot is PlaywrightException or IOException) { logger?.LogDebug("No screenshot of the failed run ({Type})", shot.GetType().Name); }
+    }
+    /// <summary>How many of each control the page has, how many of them show, and what the first shown one is: tag, id, label, whether it is
+    /// disabled, and how many characters it holds. Names and counts only, never what anybody wrote.</summary>
+    private async Task<string> FactsAsync()
+    {
+        var hooks = new Dictionary<string, string>
+        {
+            ["composer"] = settings.Selectors.Composer, ["send"] = settings.Selectors.Send, ["stop"] = settings.Selectors.Stop,
+            ["question"] = settings.Selectors.QuestionForm, ["remove"] = settings.Selectors.UploadReady, ["signedIn"] = settings.Selectors.LoggedIn,
+        };
+        try
+        {
+            return await page!.EvaluateAsync<string>("""
+                hooks => Object.entries(hooks).map(([name, selector]) => {
+                  let all = [];
+                  try { all = [...document.querySelectorAll(selector)]; } catch { return name + ' ?'; }
+                  const shown = all.filter(e => e.checkVisibility ? e.checkVisibility() : e.offsetParent !== null);
+                  const e = shown[0];
+                  const what = !e ? '' : ' ' + e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + (e.getAttribute('aria-label') ? '[' + e.getAttribute('aria-label') + ']' : '')
+                    + (e.disabled || e.getAttribute('aria-disabled') === 'true' ? ' disabled' : '') + ' ' + (e.value ?? e.innerText ?? '').length + 'ch';
+                  return name + ' ' + shown.length + '/' + all.length + what;
+                }).join(', ') + ', focus ' + (document.activeElement ? document.activeElement.tagName.toLowerCase() + (document.activeElement.id ? '#' + document.activeElement.id : '') : 'none')
+                """, hooks);
+        }
+        catch (Exception e) when (e is PlaywrightException or TimeoutException) { return "page unreadable"; }
+    }
+    /// <summary>The site draws its message box well before it has finished loading, and a file handed to it in between is dropped without a word: on a
+    /// slow line the box came 24 seconds before the load, and every picture attached in that gap ended as UploadFailed. A page that never reports its
+    /// load is attached to anyway once the wait is up.</summary>
+    private async Task LoadedAsync()
+    {
+        try { await page!.WaitForLoadStateAsync(LoadState.Load, new() { Timeout = settings.NavigationTimeoutMs }); }
+        catch (TimeoutException) { }
     }
     /// <summary>Sends the files through the composer's own input. One that takes several at once gets them in a single call; one that does not gets them one by one,
     /// the site adding each to its attachments. Either way the run waits until every file shows its remove control and nothing is still uploading.</summary>
@@ -350,7 +395,7 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
         {
             var remove = Visible(settings.Selectors.UploadReady);
             if (await remove.CountAsync() == 0) return;
-            try { await remove.First.ClickAsync(new() { Timeout = 5000 }); } catch (PlaywrightException) { return; }
+            try { await remove.First.ClickAsync(new() { Timeout = 5000 }); } catch (Exception e) when (e is PlaywrightException or TimeoutException) { return; }
             await Task.Delay(300, ct);
         }
     }
