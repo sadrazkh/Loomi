@@ -139,7 +139,7 @@ public class TelegramTests
     }
 
     [Fact]
-    public async Task A_plain_message_becomes_one_generation_in_the_bots_own_project()
+    public async Task A_plain_message_becomes_one_generation_in_a_project_named_by_it()
     {
         using var factory = new AppFactory(); var bot = new FakeTelegram(); var worker = WorkerFor(factory, bot);
         var sara = await MemberAsync(factory, "sara");
@@ -148,12 +148,11 @@ public class TelegramTests
         var g = await WithDbAsync(factory, db => db.Generations.AsNoTracking().Include(x => x.Project).SingleAsync());
         Assert.Equal("a lighthouse at dusk", g.Prompt);
         Assert.Equal(sara.Id, g.UserId);
-        Assert.Equal(TelegramBotWorker.BotProject, g.Project.Title);
+        // A chat is a project of its own, named the way the web names one started by a message, not one shared "Telegram" project.
+        Assert.Equal("a lighthouse at dusk", g.Project.Title);
         Assert.Equal(RunStatus.Queued, g.Status);
         // Charged the same as the web: one entry point means one set of rules.
         Assert.Equal(990, await WithDbAsync(factory, db => db.BalanceAsync(sara.Id, default)));
-        await worker.HandleAsync(Text("another one"), default);
-        Assert.Equal(1, await WithDbAsync(factory, db => db.Projects.CountAsync()));
     }
 
     [Fact]
@@ -215,6 +214,8 @@ public class TelegramTests
         var omid = await MemberAsync(factory, "omid");
         await LinkAsync(factory, sara.Id);
         await worker.HandleAsync(Text("mine one"), default);
+        // A second message into the same chat would wait for the first; a new chat is what runs two at once.
+        await worker.HandleAsync(Text("/new"), default);
         await worker.HandleAsync(Text("mine two"), default);
         await WithDbAsync(factory, async db =>
         {
