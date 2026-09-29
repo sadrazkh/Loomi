@@ -185,6 +185,9 @@ namespace Loomi.Data.Migrations
                     b.Property<Guid?>("AccountId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("Channel")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("ConversationUrl")
                         .HasColumnType("TEXT");
 

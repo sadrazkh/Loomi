@@ -2,6 +2,8 @@ namespace Loomi.Models;
 
 /// <summary>Reply continues the same conversation with words of the person's own, and sends no earlier picture back in with it. Appended, as ints are stored.</summary>
 public enum Operation { Generate, Edit, Branch, Reply }
+/// <summary>The door a request came through: the web page, the Telegram bot, or a script holding a personal token.</summary>
+public enum Channel { Web, Bot, Api }
 // Cancelled is appended: the values are stored as integers, so an existing row must keep the number it was written with.
 /// <summary>Answered is a finished turn whose outcome was words rather than a picture: nothing failed, and the person has something to read and reply to.</summary>
 public enum RunStatus { Queued, OpeningBrowser, OpeningChatGPT, SendingPrompt, WaitingForResponse, GeneratingImage, DownloadingImage, Completed, Failed, Cancelled, Answered }
@@ -76,6 +78,8 @@ public class Generation
     /// <summary>What the model said when it answered without a picture. The person's own conversation, returned to them and to nobody else; never logged.</summary>
     public string? ReplyText { get; set; }
     public Operation Operation { get; set; }
+    /// <summary>Stamped once, when the request is made. Requests from before it existed read as Web, except those the bot's own records claim.</summary>
+    public Channel Channel { get; set; }
     public RunStatus Status { get; set; } = RunStatus.Queued;
     public string? ErrorMessage { get; set; }
     public List<GenerationInput> Inputs { get; set; } = [];

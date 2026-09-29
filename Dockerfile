@@ -31,6 +31,9 @@ COPY deploy/entrypoint.sh /entrypoint.sh
 # An upload from Windows can carry CRLF and loses the executable bit on the way, so neither is left to the source tree.
 RUN sed -i 's/\r$//' /entrypoint.sh && chmod 755 /entrypoint.sh
 USER app
+# "Today" is the day the people using Loomi live in: the daily quota resets, and the owner's reports count, from Tehran's midnight rather than
+# UTC's, which fell at half past three in the morning there. Set here, after the heavy layers, so changing it never rebuilds them; override per host.
+ENV TZ=Asia/Tehran
 EXPOSE 8080
 # No Host header, which HTTP/1.0 allows and the host filter lets through: the check must not depend on AllowedHosts. With the name "localhost" it
 # failed wherever AllowedHosts named only the public domain, as on Harbora, and the container read "unhealthy" while serving perfectly.

@@ -24,6 +24,8 @@ public class UserAdminTests
         return client;
     }
     private static async Task<HttpClient> OwnerAsync(AppFactory factory) => await SignInAsync(factory, OwnerBootstrap.Username, AppFactory.Key);
+    /// <summary>The owner signed in through the page, cookie and CSRF header included, for tests elsewhere that need a browser session rather than a token.</summary>
+    internal static Task<HttpClient> OwnerSessionAsync(AppFactory factory) => OwnerAsync(factory);
     private static async Task<AppUser> AddUserAsync(AppFactory factory, string username, string password, UserRole role = UserRole.Member)
     {
         using var scope = factory.Services.CreateScope();

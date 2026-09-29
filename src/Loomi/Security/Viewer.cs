@@ -1,12 +1,14 @@
 using System.Security.Claims;
 using Loomi.Models;
 namespace Loomi.Security;
-/// <summary>Who a request acts as. An owner is not narrowed to their own rows; everyone else is.</summary>
-public readonly record struct Viewer(Guid Id, bool IsOwner)
+/// <summary>Who a request acts as, and through which door. An owner is not narrowed to their own rows; everyone else is.</summary>
+public readonly record struct Viewer(Guid Id, bool IsOwner, Channel Channel = Channel.Web)
 {
-    public static Viewer From(ClaimsPrincipal principal) => new(Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : Guid.Empty, principal.IsInRole(nameof(UserRole.Owner)));
+    /// <summary>A personal token is a script or another app; a cookie is the page.</summary>
+    public static Viewer From(ClaimsPrincipal principal) => new(Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : Guid.Empty,
+        principal.IsInRole(nameof(UserRole.Owner)), ApiTokens.IsToken(principal) ? Channel.Api : Channel.Web);
     /// <summary>For work that arrives without a request of its own — the bot — so it acts as exactly the person it is linked to and no wider.</summary>
-    public static Viewer For(AppUser user) => new(user.Id, user.Role == UserRole.Owner);
+    public static Viewer For(AppUser user) => new(user.Id, user.Role == UserRole.Owner, Channel.Bot);
 }
 /// <summary>Where ownership is enforced. AppDbContext deliberately has no global filter, so a request-scoped query that skips this reads another user's work.</summary>
 public static class Ownership

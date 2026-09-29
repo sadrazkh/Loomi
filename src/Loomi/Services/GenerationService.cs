@@ -101,7 +101,7 @@ public class GenerationService(AppDbContext db, IOptions<BrowserOptions> browser
         if (parentId == null && ordered is [{ SourceGenerationId: { } only }] && await db.Generations.AnyAsync(x => x.Id == only && x.ProjectId == projectId, ct)) parentId = only;
         // The project's user, not the actor: an owner helping out must not spend their own quota or take the work over.
         var generation = new Generation { ProjectId = projectId, UserId = project.UserId, Provider = provider, Prompt = prompt.Trim(), Operation = operation, ParentGenerationId = parentId, Inputs = ordered, AccountId = pinned,
-                                          TemplateId = template?.Id, TemplateTitle = template?.Title, HiddenPrompt = template?.HiddenPrompt };
+                                          Channel = viewer.Channel, TemplateId = template?.Id, TemplateTitle = template?.Title, HiddenPrompt = template?.HiddenPrompt };
         // The owner pays for the provider accounts themselves, so charging them their own credits would be bookkeeping with nothing behind it,
         // and work whose user no longer exists has no balance to spend — the same reasoning the daily quota uses.
         if (await db.Users.AsNoTracking().Where(u => u.Id == project.UserId).Select(u => (UserRole?)u.Role).FirstOrDefaultAsync(ct) == UserRole.Member)
