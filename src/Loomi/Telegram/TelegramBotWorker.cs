@@ -140,6 +140,8 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
             case "/status": await StatusAsync(db, chat, user, persian, ct); return;
             // A half-finished choice is what the person most likely means to stop; running work is cancelled only when there is nothing else.
             case "/cancel": if (pending.TryRemove(chat, out _)) await SayAsync(chat, "stateCleared", persian, ct); else await CancelAsync(db, chat, user, persian, ct); return;
+            // Everybody's use is the owner's to read. To anyone else it is an unknown command, and it stays out of the menu members see.
+            case "/users" when user.Role == UserRole.Owner: await Usage(scope, db).SummaryAsync(chat, UsagePeriod.Today, persian, ct); return;
         }
         if (message.Photo is { Length: > 0 } sizes)
         {
@@ -190,7 +192,8 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
         if (user == null) { await SayAsync(chat, "linkFirst", persian, ct); return; }
         var colon = data.IndexOf(':');
         var verb = colon < 0 ? data : data[..colon];
-        Guid.TryParseExact(colon < 0 ? "" : data[(colon + 1)..], "N", out var id);
+        var payload = colon < 0 ? "" : data[(colon + 1)..];
+        Guid.TryParseExact(payload, "N", out var id);
         switch (verb)
         {
             case "templates": await ShowCategoriesAsync(db, chat, persian, ct); break;
@@ -203,8 +206,13 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
             case "again": await RepeatAsync(chat, persian, id, ct); break;
             case "file": await SendOriginalAsync(db, scope, chat, persian, user, id, ct); break;
             case "new": await NewChatAsync(db, chat, persian, ct); break;
+            // Pressed by a member, from a forwarded message or a hand-made query, these do nothing at all.
+            case "usage" or "usr" or "uimg" when user.Role == UserRole.Owner: await Usage(scope, db).PressAsync(chat, verb, payload, persian, ct); break;
         }
     }
+    /// <summary>The owner's report, speaking through this worker's own client.</summary>
+    private UsageBot Usage(IServiceScope scope, AppDbContext db) =>
+        new(client, scope.ServiceProvider.GetRequiredService<UsageReport>(), db, scope.ServiceProvider.GetRequiredService<IImageStorage>());
     private static async Task<AppUser?> UserAsync(AppDbContext db, long chat, CancellationToken ct) =>
         await db.TelegramLinks.AsNoTracking().Where(l => l.ChatId == chat)
             .Join(db.Users.Where(u => !u.IsDisabled), l => l.UserId, u => u.Id, (_, u) => u).FirstOrDefaultAsync(ct);

@@ -8,7 +8,9 @@ public static class BotMessages
     /// <summary>Written in Persian script. Many people run Telegram in English and still write in Persian, and they should be answered in Persian.</summary>
     public static bool LooksPersian(string? text) => text?.Any(c => c is >= '\u0600' and <= '\u06FF') == true;
     /// <summary>A number the way the reader writes it: Persian digits in Persian.</summary>
-    public static string Number(long n, bool persian) => persian ? string.Concat(n.ToString().Select(c => char.IsAsciiDigit(c) ? (char)('\u06F0' + (c - '0')) : c)) : n.ToString();
+    public static string Number(long n, bool persian) => Digits(n.ToString(), persian);
+    /// <summary>Any figures in a formatted text the way the reader writes them. .NET formats a Persian date in Latin digits, so they are swapped here.</summary>
+    public static string Digits(string text, bool persian) => persian ? string.Concat(text.Select(c => char.IsAsciiDigit(c) ? (char)('\u06F0' + (c - '0')) : c)) : text;
     public static string Text(string key, bool persian, params object[] args)
     {
         var (en, fa) = Table.TryGetValue(key, out var found) ? found : Table["AutomationFailed"];
@@ -106,5 +108,38 @@ public static class BotMessages
                             "Loomi: {0} درخواست منتظر است و هیچ حسابی نمی‌تواند انجامشان دهد. تنظیمات ← حساب‌های ارائه‌دهنده را ببینید."),
         ["alertFailures"] = ("Loomi: {0} generations failed in a row ({1}). Check Settings → Provider accounts and the app's logs.",
                              "Loomi: {0} ساخت پشت‌سرهم ناموفق شد ({1}). تنظیمات ← حساب‌های ارائه‌دهنده و لاگ برنامه را ببینید."),
+        // The owner's usage report. Only owners ever see these, so they name people and quote what they asked for.
+        ["usageTitle"] = ("📊 Usage · {0}", "📊 گزارش مصرف · {0}"),
+        ["usageNightly"] = ("🌙 Nightly report · {0}", "🌙 گزارش شبانه · {0}"),
+        ["periodToday"] = ("today", "امروز"),
+        ["periodWeek"] = ("the last 7 days", "۷ روز گذشته"),
+        ["periodMonth"] = ("the last 30 days", "۳۰ روز گذشته"),
+        ["periodAll"] = ("all time", "از ابتدا"),
+        ["btnPeriodToday"] = ("Today", "امروز"),
+        ["btnPeriodWeek"] = ("7 days", "۷ روز"),
+        ["btnPeriodMonth"] = ("30 days", "۳۰ روز"),
+        ["btnPeriodAll"] = ("All", "همه"),
+        ["usageFigures"] = ("👥 Active users: {0}\n📨 Requests: {1}\n🖼 Images: {2}\n❌ Failed: {3}\n💳 Credits spent: {4}",
+                            "👥 کاربران فعال: {0}\n📨 درخواست‌ها: {1}\n🖼 تصویرها: {2}\n❌ ناموفق: {3}\n💳 اعتبار خرج‌شده: {4}"),
+        ["usageLine"] = ("{0} — {1} requests, {2} images", "{0} — {1} درخواست، {2} تصویر"),
+        ["usageNone"] = ("Nobody used Loomi in this period.", "در این بازه کسی از Loomi استفاده نکرده است."),
+        ["roleOwner"] = ("owner", "مالک"),
+        ["roleMember"] = ("member", "عضو"),
+        ["userDisabled"] = ("disabled", "غیرفعال"),
+        ["usageUser"] = ("👤 {0} ({1}) · {2}", "👤 {0} ({1}) · {2}"),
+        ["usageRequests"] = ("📨 Requests: {0} — images {1}, answers {2}, failed {3}, cancelled {4}",
+                             "📨 درخواست‌ها: {0} — تصویر {1}، پاسخ متنی {2}، ناموفق {3}، لغوشده {4}"),
+        ["usageKinds"] = ("💬 New chats: {0} · follow-ups: {1}", "💬 گفتگوی تازه: {0} · ادامه‌ی گفتگو: {1}"),
+        ["usageChannels"] = ("🚪 Web: {0} · bot: {1} · API: {2}", "🚪 وب: {0} · ربات: {1} · API: {2}"),
+        ["usageCredits"] = ("💳 Credits spent: {0} · left: {1}", "💳 اعتبار خرج‌شده: {0} · مانده: {1}"),
+        ["usageCreditsOwner"] = ("💳 Credits spent: {0}", "💳 اعتبار خرج‌شده: {0}"),
+        ["usageToday"] = ("📅 Today: {0} / {1}", "📅 امروز: {0} / {1}"),
+        ["usageTemplates"] = ("✨ Templates: {0}", "✨ قالب‌ها: {0}"),
+        ["usageLastActive"] = ("🕒 Last active: {0}", "🕒 آخرین فعالیت: {0}"),
+        ["usageNever"] = ("never", "هرگز"),
+        ["usageLatest"] = ("Latest requests:", "آخرین درخواست‌ها:"),
+        ["usageNoImages"] = ("No finished images yet.", "هنوز تصویر تمام‌شده‌ای نیست."),
+        ["btnLatestImages"] = ("🖼 Latest images", "🖼 آخرین عکس‌ها"),
+        ["btnBack"] = ("↩️ Back", "↩️ برگشت"),
     };
 }
