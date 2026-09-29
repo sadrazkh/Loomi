@@ -16,7 +16,8 @@ public sealed class InstanceLeaseTests : IDisposable
     {
         Directory.CreateDirectory(root);
         System.IO.File.WriteAllLines(File + ".fake", [holder, renewed.ToString("O")]);
-        try { System.IO.File.Move(File + ".fake", File, overwrite: true); } catch (IOException) { /* the reader has it open; the next renewal lands */ }
+        // Windows refuses the replace with either exception while the reader has the file open. Uncaught on this bare thread, it took the whole test host down.
+        try { System.IO.File.Move(File + ".fake", File, overwrite: true); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* the next renewal lands */ }
     }
     public void Dispose() { if (Directory.Exists(root)) Directory.Delete(root, true); }
 
