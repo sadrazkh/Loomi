@@ -55,12 +55,14 @@ public class UsageReport(AppDbContext db)
     }
     public async Task<UserUsage?> UserAsync(Guid user, UsagePeriod period, CancellationToken ct) =>
         await db.Users.AnyAsync(u => u.Id == user, ct) ? (await ReadAsync(period, [user], ct)).Single() : null;
+    /// <summary>SQLite hands times back without their kind. They were written as UTC, and said so they reach a browser as UTC rather than as its own clock.</summary>
+    private static DateTime Utc(DateTime at) => DateTime.SpecifyKind(at, DateTimeKind.Utc);
     /// <summary>Newest first. A page is at most <see cref="MaxPage"/> long, however many are asked for.</summary>
     public async Task<IReadOnlyList<UsageItem>> RequestsAsync(Guid user, int skip, int take, CancellationToken ct) =>
-        await db.Generations.AsNoTracking().Where(g => g.UserId == user).OrderByDescending(g => g.CreatedAt).Skip(Math.Max(0, skip)).Take(Math.Clamp(take, 1, MaxPage))
+        (await db.Generations.AsNoTracking().Where(g => g.UserId == user).OrderByDescending(g => g.CreatedAt).Skip(Math.Max(0, skip)).Take(Math.Clamp(take, 1, MaxPage))
             .Select(g => new UsageItem(g.Id, g.ProjectId, g.Project.Title, g.CreatedAt, g.Prompt, g.Operation, g.Status, g.Channel, g.TemplateTitle, g.CreditCost,
                 g.LocalImagePath != null, g.ReplyText, g.ErrorMessage))
-            .ToListAsync(ct);
+            .ToListAsync(ct)).Select(i => i with { CreatedAt = Utc(i.CreatedAt) }).ToList();
     /// <summary>On unless the owner has switched it off.</summary>
     public async Task<bool> DailyEnabledAsync(CancellationToken ct) => await SettingAsync(DailyKey, ct) != "off";
     public Task SetDailyEnabledAsync(bool enabled, CancellationToken ct) => SetSettingAsync(DailyKey, enabled ? "on" : "off", ct);
@@ -96,7 +98,7 @@ public class UsageReport(AppDbContext db)
                 mine.Count(r => r.Operation is Operation.Generate or Operation.Branch), mine.Count(r => r.Operation is Operation.Reply or Operation.Edit),
                 mine.Count(r => r.Channel == Channel.Web), mine.Count(r => r.Channel == Channel.Bot), mine.Count(r => r.Channel == Channel.Api),
                 spent.GetValueOrDefault(u.Id), u.Role == UserRole.Owner ? null : balances.GetValueOrDefault(u.Id), today.GetValueOrDefault(u.Id), u.DailyQuota,
-                last.TryGetValue(u.Id, out var at) ? at : null, templates);
+                last.TryGetValue(u.Id, out var at) ? Utc(at) : null, templates);
         }).ToList();
     }
 }

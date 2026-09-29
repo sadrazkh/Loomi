@@ -170,6 +170,21 @@ public class UsageTests
     }
 
     [Fact]
+    public async Task Times_go_out_marked_as_UTC_so_a_browser_does_not_read_them_as_its_own()
+    {
+        using var world = await ApiV1World.CreateAsync();
+        var (sara, _) = await world.MemberAsync("sara");
+        var (_, owner) = await world.OwnerAsync();
+        await SeedAsync(world, sara, Row(RunStatus.Completed, Operation.Generate, Channel.Web, Today(5)));
+        var person = await owner.GetFromJsonAsync<JsonElement>($"/api/usage/users/{sara}?period=all");
+        Assert.EndsWith("Z", person.GetProperty("lastActive").GetString());
+        var requests = await owner.GetFromJsonAsync<JsonElement>($"/api/usage/users/{sara}/requests");
+        Assert.EndsWith("Z", requests[0].GetProperty("createdAt").GetString());
+        var summary = await owner.GetFromJsonAsync<JsonElement>("/api/usage");
+        Assert.EndsWith("Z", summary.GetProperty("since").GetString());
+    }
+
+    [Fact]
     public async Task The_nightly_report_can_be_switched_off_and_on()
     {
         using var world = await ApiV1World.CreateAsync();
