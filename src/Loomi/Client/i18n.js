@@ -9,4 +9,5 @@ export const messages = {
 // Strings of later features live in files of their own and are folded in here, so work on different features never edits the same line.
 import chatStrings from './i18n-chat.js';
 import apiStrings from './i18n-api.js';
-for (const extra of [chatStrings, apiStrings]) for (const lang of Object.keys(extra)) Object.assign(messages[lang], extra[lang]);
+import usageStrings from './i18n-usage.js';
+for (const extra of [chatStrings, apiStrings, usageStrings]) for (const lang of Object.keys(extra)) Object.assign(messages[lang], extra[lang]);
