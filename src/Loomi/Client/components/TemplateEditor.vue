@@ -4,6 +4,7 @@ import { Trash2, Upload, WandSparkles, LoaderCircle, Check, ImageOff, MessagesSq
 import Modal from './Modal.vue';
 import PhotoPicker from './PhotoPicker.vue';
 import { sampleSrc } from './templates.js';
+import { sized, THUMB } from '../images.js';
 import { t, n, PROVIDERS, busy, api, action, postForm, openCreated } from '../core';
 // template is the manage shape, or null for one not saved yet; it is refreshed from outside while a sample is being made, the form is not.
 const props = defineProps({ template: Object, categories: Array, defaults: Object });
@@ -94,7 +95,7 @@ onBeforeUnmount(() => { for (const p of testPhotos.value) api(`/api/uploads/${p.
     <p v-if="!template" class="field-help">{{ t('stSampleSaveFirst') }}</p>
     <div v-else class="sample-box">
      <div class="preview">
-      <img v-if="template.sampleUrl" :src="sampleSrc(template)" :alt="t('stSample')">
+      <img v-if="template.sampleUrl" :src="sized(sampleSrc(template), THUMB)" :alt="t('stSample')">
       <span v-else class="empty"><ImageOff/><small>{{ t('stNoSample') }}</small></span>
       <span v-if="state === 'generating'" class="busy-veil"><LoaderCircle class="spin"/></span>
      </div>

@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue';
 import { Images, Plus } from 'lucide-vue-next';
 import ImagePreview from '../components/studio/ImagePreview.vue';
 import { counted } from '../components/studio/shared.js';
+import { sized, CARD } from '../images.js';
 import { t, statusKnown, projects, api, when, go } from '../core';
 // Every picture the person has made, newest first, gathered from each of their chats; one opens at full size with a way back to its chat.
 const items = ref([]), loaded = ref(false), shown = ref(null);
@@ -28,7 +29,7 @@ watch(signature, s => { if (s != null) load(); }, { immediate: true });
   <div v-else-if="!items.length" class="blank"><Images/><h2>{{ t('stNoImagesTitle') }}</h2><p>{{ t('stNoImagesBody') }}</p><div class="cluster"><button type="button" class="btn btn-primary" @click="go('home')"><Plus/>{{ t('shNewImage') }}</button></div></div>
   <div v-else class="grid">
    <button v-for="g in items" :key="g.id" type="button" class="pic" :aria-label="g.prompt || g.projectTitle" @click="shown = g">
-    <img :src="g.imageUrl" alt="" loading="lazy">
+    <img :src="sized(g.imageUrl, CARD)" alt="" loading="lazy">
     <span class="cap" dir="auto">{{ g.prompt || g.templateTitle || g.projectTitle }}</span>
    </button>
   </div>

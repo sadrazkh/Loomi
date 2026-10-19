@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { Download, MessagesSquare } from 'lucide-vue-next';
 import Modal from '../Modal.vue';
 import { t, current, go } from '../../core';
+import { sized, FULL } from '../../images.js';
 // One picture at full size, with its prompt and a download; from the gallery it also leads back to the chat it was made in.
 const props = defineProps({ generation: Object, chatLink: Boolean });
 const emit = defineEmits(['close']);
@@ -11,7 +12,7 @@ function openChat() { const id = props.generation.projectId; emit('close'); go('
 </script>
 <template>
  <Teleport to="body"><Modal size="full" :title="title" :close-label="t('stClose')" @close="emit('close')">
-  <div class="frame"><img :src="generation.imageUrl" :alt="generation.prompt || generation.templateTitle || ''"></div>
+  <div class="frame"><img :src="sized(generation.imageUrl, FULL)" :alt="generation.prompt || generation.templateTitle || ''"></div>
   <p v-if="generation.prompt" class="caption" dir="auto">{{ generation.prompt }}</p>
   <div class="dlg-actions">
    <button v-if="chatLink" type="button" class="btn" @click="openChat"><MessagesSquare/>{{ t('stOpenChat') }}</button>

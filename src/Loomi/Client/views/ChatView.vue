@@ -8,6 +8,7 @@ import Modal from '../components/Modal.vue';
 import ImagePreview from '../components/studio/ImagePreview.vue';
 import ConfirmDialog from '../components/studio/ConfirmDialog.vue';
 import { narrow } from '../components/studio/shared.js';
+import { sized, THUMB } from '../images.js';
 import { t, n, busy, isOwner, ready, current, generations, view, waiting, latest, started, latestPicture, connected, provider, quota, api, action, refresh, reloadCurrent, startChat, deleteProject, go } from '../core';
 // One chat: its messages and answers, the box for the next message, and what can be done to the chat itself.
 // On a phone the shell steps aside here, so this page brings its own header (with the way back) and keeps the box at the bottom.
@@ -138,7 +139,7 @@ watch(() => current.value?.id, () => { op.value = null; shown.value = null; menu
 
   <Teleport v-if="op" to="body"><Modal :title="t(op.kind === 'edit' ? 'stEditOlderTitle' : 'stBranchTitle')" :close-label="t('stClose')" @close="op = null">
    <form class="stack" @submit.prevent="submitOp">
-    <div class="source"><img :src="op.g.imageUrl" alt=""><p dir="auto">{{ op.g.prompt || op.g.templateTitle }}</p></div>
+    <div class="source"><img :src="sized(op.g.imageUrl, THUMB)" alt=""><p dir="auto">{{ op.g.prompt || op.g.templateTitle }}</p></div>
     <p class="help">{{ t(op.kind === 'edit' ? 'stEditOlderHelp' : 'stBranchHelp') }}</p>
     <div class="field"><label for="op-prompt">{{ t('stChangeLabel') }}</label><textarea id="op-prompt" v-model="opPrompt" class="input" rows="4" maxlength="12000" required dir="auto" :placeholder="t('stChangePlaceholder')" @keydown.enter="opKey"></textarea></div>
     <p v-if="op.kind === 'edit' && waiting" class="notice"><LoaderCircle class="spin"/><span>{{ t('stWaitNext') }}</span></p>

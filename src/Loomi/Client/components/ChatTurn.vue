@@ -4,6 +4,7 @@ import { Pencil, GitBranchPlus, Download, X, LayoutTemplate, CircleAlert, Ban, I
 import LoomiMark from './LoomiMark.vue';
 import { queueText, STEPS, phaseOf, stepOf } from './queue.js';
 import { t, isOwner, busy, queueInfo, FINISHED, ago, cancelOne } from '../core';
+import { sized, inputSrc, VIEW } from '../images.js';
 // One message and its answer, the way a chat app shows them: the person's words on their side, the picture (or the reply) on the other.
 // latest: the chat's newest picture, which the next message works on anyway, so editing it needs nothing sent again.
 const props = defineProps({ generation: Object, latest: Boolean });
@@ -25,14 +26,14 @@ const arrived = e => { const { naturalWidth: w, naturalHeight: h } = e.target; r
 <template>
  <article class="turn">
   <div v-if="asked" class="me">
-   <div v-if="generation.inputs?.length" class="ins" role="group" :aria-label="t('stSentPhotos')"><img v-for="(input, i) in generation.inputs" :key="i" :src="input.url" alt="" loading="lazy"></div>
+   <div v-if="generation.inputs?.length" class="ins" role="group" :aria-label="t('stSentPhotos')"><img v-for="(input, i) in generation.inputs" :key="i" :src="inputSrc(input)" alt="" loading="lazy"></div>
    <span v-if="generation.templateTitle" class="from"><LayoutTemplate/><bdi>{{ generation.templateTitle }}</bdi></span>
    <p v-if="generation.prompt" dir="auto">{{ generation.prompt }}</p>
   </div>
   <div class="ai">
    <div class="ai-head"><span class="mark"><LoomiMark :size="15"/></span><span>Loomi{{ t('stSep').trimEnd() }}</span><time :datetime="generation.createdAt">{{ ago(generation.createdAt) }}</time></div>
    <template v-if="generation.imageUrl">
-    <button type="button" class="shot" :class="{ waiting: !ratio }" :style="ratio ? { '--ratio': ratio } : null" :aria-label="t('stOpenImage')" @click="emit('preview', generation)"><img :src="generation.imageUrl" :alt="generation.prompt || generation.templateTitle || ''" @load="arrived"></button>
+    <button type="button" class="shot" :class="{ waiting: !ratio }" :style="ratio ? { '--ratio': ratio } : null" :aria-label="t('stOpenImage')" @click="emit('preview', generation)"><img :src="sized(generation.imageUrl, VIEW)" :alt="generation.prompt || generation.templateTitle || ''" @load="arrived"></button>
     <div class="acts">
      <button type="button" class="chip" :title="t(latest ? 'stEditHint' : 'stEditOlderHint')" @click="emit('edit', generation)"><Pencil/>{{ t('stEdit') }}</button>
      <button type="button" class="chip" :title="t('stBranchHint')" @click="emit('branch', generation)"><GitBranchPlus/><span class="long">{{ t('stBranch') }}</span><span class="short">{{ t('stBranchShort') }}</span></button>

@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { Pencil, GitBranchPlus, Download, ExternalLink, X, LayoutTemplate, CircleAlert, LoaderCircle, Ban, MessageSquareText } from 'lucide-vue-next';
 import { queueText, phaseOf } from './queue.js';
 import { t, n, busy, queueInfo, FINISHED, ago, cancelOne } from '../core';
+import { sized, inputSrc, CARD } from '../images.js';
 // One request as a card, for the timeline and the branch tree: a secondary way to look over a chat, so it keeps a small index to tell cards apart.
 // latest: the chat's newest picture, which the next message works on anyway, so editing it needs nothing sent again.
 const props = defineProps({ generation: Object, index: Number, latest: Boolean });
@@ -16,7 +17,7 @@ const label = computed(() => t(settled.value ? DONE[g.value.status] : TITLES[pha
 </script>
 <template>
  <article class="gcard" :class="{ failed: generation.status === 'Failed' }">
-  <button v-if="generation.imageUrl" type="button" class="media" :aria-label="t('stOpenImage')" @click="emit('preview', generation)"><img :src="generation.imageUrl" :alt="generation.prompt || generation.templateTitle || ''" loading="lazy"></button>
+  <button v-if="generation.imageUrl" type="button" class="media" :aria-label="t('stOpenImage')" @click="emit('preview', generation)"><img :src="sized(generation.imageUrl, CARD)" :alt="generation.prompt || generation.templateTitle || ''" loading="lazy"></button>
   <div v-else-if="generation.replyText" class="media text" dir="auto"><MessageSquareText/><p>{{ generation.replyText }}</p></div>
   <div v-else class="media empty" :class="{ skel: !settled }">
    <CircleAlert v-if="generation.status === 'Failed'"/><Ban v-else-if="generation.status === 'Cancelled'"/><LoaderCircle v-else-if="!settled" class="spin"/>
@@ -27,7 +28,7 @@ const label = computed(() => t(settled.value ? DONE[g.value.status] : TITLES[pha
    <div class="meta"><span class="idx num">#{{ n(index) }}</span><span class="pill" :class="PILL[generation.status] || ''">{{ label }}</span><span class="grow"/><time :datetime="generation.createdAt">{{ ago(generation.createdAt) }}</time></div>
    <span v-if="generation.templateTitle" class="from"><LayoutTemplate/><bdi>{{ generation.templateTitle }}</bdi></span>
    <p v-if="generation.prompt" class="prompt" dir="auto">{{ generation.prompt }}</p>
-   <div v-if="generation.inputs?.length" class="ins"><img v-for="(input, i) in generation.inputs" :key="i" :src="input.url" alt="" loading="lazy"></div>
+   <div v-if="generation.inputs?.length" class="ins"><img v-for="(input, i) in generation.inputs" :key="i" :src="inputSrc(input)" alt="" loading="lazy"></div>
   </div>
   <footer>
    <template v-if="generation.imageUrl">

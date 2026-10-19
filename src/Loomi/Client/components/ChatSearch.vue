@@ -2,6 +2,7 @@
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { Search, MessagesSquare, X } from 'lucide-vue-next';
 import { t, projects, ago, go } from '../core';
+import { sized, THUMB } from '../images.js';
 // Finding a chat, the way chat apps do it now: a box that opens over the page, the latest chats before anything is typed, the arrow keys to pick and
 // Enter to open. It replaces a search field that took a row of the side menu for something used now and then.
 const emit = defineEmits(['close']);
@@ -35,7 +36,7 @@ onBeforeUnmount(() => { document.body.style.overflow = ''; previous?.focus?.(); 
     <p class="label">{{ query.trim() ? t('shResults') : t('shRecent') }}</p>
     <ul v-if="results.length" id="chat-search-list" ref="list" class="list" role="listbox">
      <li v-for="(p, i) in results" :key="p.id" role="option" :aria-selected="i===active" @mousemove="active=i" @click="open(p)">
-      <span class="thumb"><img v-if="p.coverId" :src="`/api/generations/${p.coverId}/image`" alt="" loading="lazy"><MessagesSquare v-else/></span>
+      <span class="thumb"><img v-if="p.coverId" :src="sized(`/api/generations/${p.coverId}/image`, THUMB)" alt="" loading="lazy"><MessagesSquare v-else/></span>
       <span class="title truncate" dir="auto">{{ p.title }}</span>
       <small class="faint-text">{{ ago(p.updatedAt) }}</small>
      </li>
