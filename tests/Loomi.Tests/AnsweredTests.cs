@@ -304,7 +304,8 @@ public class AnsweredTests
         Assert.Equal(asked.Id, reply.GetProperty("parentGenerationId").GetGuid());
         var answered = await SettledAsync(factory, reply.GetProperty("id").GetGuid());
         Assert.Equal(older, answered.AccountId);
-        Assert.Contains(launcher.Visits, v => v.EndsWith("/c/fixture-conversation"));
+        // In the very conversation the question was asked in, whether the tab still showed it or had to open it again.
+        Assert.EndsWith("/c/fixture-conversation", answered.ConversationUrl);
         Assert.NotEqual(newer, answered.AccountId);
     }
 

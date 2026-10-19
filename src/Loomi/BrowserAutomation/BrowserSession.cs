@@ -168,15 +168,23 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             // there would answer the person with none of what came before, so that is refused rather than done quietly.
             var continuing = operation is Operation.Edit or Operation.Reply && conversation != null;
             step = continuing ? "opening the conversation" : "opening ChatGPT";
-            // One allowance for the whole opening, the address and the box together, so a slow load is not granted it twice.
-            var allowance = continuing ? settings.ConversationOpenSeconds * 1000 : settings.NavigationTimeoutMs;
-            var opened = DateTime.UtcNow.AddMilliseconds(allowance);
-            await NavigateAsync(continuing ? conversation! : "https://chatgpt.com/", allowance);
-            step = "waiting for the message box";
-            await Visible($"{settings.Selectors.Composer}, {settings.Selectors.QuestionForm}").First.WaitForAsync(new() { Timeout = (float)Math.Max(1000, (opened - DateTime.UtcNow).TotalMilliseconds) });
-            clock.Mark("page");
+            // The tab is used where it stands when it already shows what this run needs: the same conversation for a follow-up, or a fresh chat one
+            // click away for a new one. Loading the page again took 10 to 16 seconds for the home page and 25 to 55 for a conversation, which the site
+            // fetches whole, earlier pictures and all; a follow-up to the picture just made paid that every time for a page that was already there.
+            var kept = continuing ? await ShowsConversationAsync(conversation!) : await FreshChatInPlaceAsync(ct);
+            if (!kept)
+            {
+                // One allowance for the whole opening, the address and the box together, so a slow load is not granted it twice.
+                var allowance = continuing ? settings.ConversationOpenSeconds * 1000 : settings.NavigationTimeoutMs;
+                var opened = DateTime.UtcNow.AddMilliseconds(allowance);
+                await NavigateAsync(continuing ? conversation! : "https://chatgpt.com/", allowance);
+                step = "waiting for the message box";
+                await Visible($"{settings.Selectors.Composer}, {settings.Selectors.QuestionForm}").First.WaitForAsync(new() { Timeout = (float)Math.Max(1000, (opened - DateTime.UtcNow).TotalMilliseconds) });
+            }
+            clock.Mark(kept ? "page kept" : "page loaded");
             if (continuing && !IsConversation(page!.Url)) throw new InvalidOperationException("ConversationNotSaved");
-            if (continuing) { step = "waiting for the conversation to load"; await SettleConversationAsync(ct); }
+            // A conversation that was already on screen has long finished drawing its earlier turns.
+            if (continuing && !kept) { step = "waiting for the conversation to load"; await SettleConversationAsync(ct); }
             await DetectAsync();
             if (state != "Connected") throw new InvalidOperationException(state == "VerificationRequired" ? "VerificationRequired" : "LoginRequired");
             clock.Mark("settle");
@@ -192,10 +200,12 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
                 clock.Mark("attach");
             }
             step = "reading the page";
-            var before = await page!.Locator(settings.Selectors.Assistant).CountAsync();
+            // Only what shows is counted, before sending and while waiting alike: a chat started in place keeps the previous one in the page, hidden,
+            // and its last picture would otherwise stand where the new one is looked for.
+            var before = await Visible(settings.Selectors.Assistant).CountAsync();
             // Counted across the page, not inside the reply: the site renders a generated image in the conversation turn,
             // outside the assistant message element, so scoping the search there finds nothing however new the image is.
-            var imagesBefore = await page.Locator(settings.Selectors.GeneratedImage).CountAsync();
+            var imagesBefore = await Visible(settings.Selectors.GeneratedImage).CountAsync();
             var pendingBefore = await page.Locator(settings.Selectors.ImagePending).CountAsync();
             // A question already waiting on this page is the one being answered; only a different one afterwards is a new question.
             var askedBefore = await QuestionAsync();
@@ -243,7 +253,7 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             while (DateTime.UtcNow < deadline)
             {
                 beat = DateTime.UtcNow;
-                await Task.Delay(1500, ct);
+                await Task.Delay(settings.PollMs, ct);
                 if (crashed)
                 {
                     // The dead tab still knows its last address: a crash right after sending happens before this loop has read it.
@@ -273,7 +283,7 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
                 {
                     var stopping = await Visible(settings.Selectors.Stop).CountAsync() > 0;
                     sawStop |= stopping;
-                    var images = page.Locator(settings.Selectors.GeneratedImage);
+                    var images = Visible(settings.Selectors.GeneratedImage);
                     var image = images.Last;
                     if (await images.CountAsync() > imagesBefore && await image.IsVisibleAsync())
                     {
@@ -329,7 +339,7 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
                     }
                     // Just reopened, the conversation's words are on the page before its pictures are: an answer in words is not judged until they have had time to arrive.
                     if (recoveredAt is { } since && DateTime.UtcNow - since < TimeSpan.FromSeconds(20)) continue;
-                    var replies = page.Locator(settings.Selectors.Assistant);
+                    var replies = Visible(settings.Selectors.Assistant);
                     if (await QuestionAsync() is { } asked && asked != askedBefore)
                     {
                         // The model is waiting on the person: any preface it wrote reads like progress on its own, so the question is what is handed back.
@@ -369,6 +379,51 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             throw;
         }
         finally { gate.Release(); }
+    }
+    private static bool SamePage(string a, string b) => Uri.TryCreate(a, UriKind.Absolute, out var x) && Uri.TryCreate(b, UriKind.Absolute, out var y)
+        && x.Host == y.Host && x.AbsolutePath.TrimEnd('/') == y.AbsolutePath.TrimEnd('/');
+    private async Task<bool> ComposerShownAsync() => !crashed && page is { IsClosed: false } && await Visible($"{settings.Selectors.Composer}, {settings.Selectors.QuestionForm}").CountAsync() > 0;
+    /// <summary>The tab is on this very conversation, alive, with its box showing: usually because the previous run in it was this chat's last turn.</summary>
+    private async Task<bool> ShowsConversationAsync(string conversation) => !crashed && page is { IsClosed: false } && SamePage(page.Url, conversation) && await ComposerShownAsync();
+    /// <summary>Nothing of a conversation showing. Counted among what is visible: after New chat the site keeps the previous conversation in the page,
+    /// hidden, so counting everything never found a fresh chat at all.</summary>
+    private async Task<bool> EmptyThreadAsync() =>
+        await Visible($"{settings.Selectors.Assistant}, {settings.Selectors.GeneratedImage}, [data-message-author-role='user']").CountAsync() == 0;
+    /// <summary>A fresh chat without loading the site again: the tab is already on one, or the site makes one in place, first through its own keyboard
+    /// shortcut and then through its New chat button. The shortcut leads because on the live site the visible button did not take a click within five
+    /// seconds while the shortcut worked at once. Anything short of an empty chat on the home address soon after counts as not done, and the run loads
+    /// the page as before.</summary>
+    private async Task<bool> FreshChatInPlaceAsync(CancellationToken ct)
+    {
+        if (page is not { IsClosed: false } || crashed || !Uri.TryCreate(page.Url, UriKind.Absolute, out var at) || at.Host != "chatgpt.com" || !await ComposerShownAsync()) return false;
+        if (at.AbsolutePath == "/" && await EmptyThreadAsync()) return true;
+        foreach (var how in new[] { "shortcut", "button" })
+        {
+            try
+            {
+                if (how == "shortcut") await page.Keyboard.PressAsync("Control+Shift+O");
+                else if (await Visible(settings.Selectors.NewChat).CountAsync() > 0) await Visible(settings.Selectors.NewChat).First.ClickAsync(new() { Timeout = 3000, Force = true });
+                else continue;
+            }
+            catch (Exception e) when (e is PlaywrightException or TimeoutException) { logger?.LogInformation("New chat in place: the {How} could not be used ({Type})", how, e.GetType().Name); continue; }
+            if (await FreshAsync(TimeSpan.FromSeconds(4), ct)) return true;
+            // Said in counts only, so a change on the site shows which part stopped matching.
+            logger?.LogInformation("New chat in place did not settle after the {How}: home {Home}, turns showing {Turns}, box showing {Box}", how,
+                Uri.TryCreate(page.Url, UriKind.Absolute, out var end) && end.AbsolutePath == "/",
+                await Visible($"{settings.Selectors.Assistant}, {settings.Selectors.GeneratedImage}, [data-message-author-role='user']").CountAsync(),
+                await Visible(settings.Selectors.Composer).CountAsync());
+        }
+        return false;
+    }
+    private async Task<bool> FreshAsync(TimeSpan within, CancellationToken ct)
+    {
+        var until = DateTime.UtcNow + within;
+        while (DateTime.UtcNow < until)
+        {
+            await Task.Delay(250, ct);
+            if (Uri.TryCreate(page!.Url, UriKind.Absolute, out var now) && now.AbsolutePath == "/" && await EmptyThreadAsync() && await Visible(settings.Selectors.Composer).CountAsync() > 0) return true;
+        }
+        return false;
     }
     /// <summary>A conversation opens with its message box first and its earlier turns a moment later, pictures last. Counted before they arrive, the
     /// conversation's own last picture turned up after the prompt was sent and was taken for the answer: a follow-up came back with the previous

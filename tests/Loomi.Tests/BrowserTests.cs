@@ -37,7 +37,10 @@ public class FixtureLauncher : IChromiumLauncher, IAsyncDisposable
           if (prompt === 'timeout') return;
           const reply = document.createElement('div'); reply.dataset.messageAuthorRole = 'assistant';
           const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
-          const ctx = canvas.getContext('2d'); ctx.fillStyle = '#7aa5cf'; ctx.fillRect(0,0,256,256);
+          // A colour of its own for each answer, as the site never hands back the very same picture twice; a page kept from one run to the next
+          // still shows the earlier ones.
+          window.answers = (window.answers || 0) + 1;
+          const ctx = canvas.getContext('2d'); ctx.fillStyle = ['#7aa5cf', '#cf7a7a', '#7acf8f', '#cfc27a'][window.answers % 4]; ctx.fillRect(0,0,256,256);
           const image = document.createElement('img'); image.alt = 'Generated image'; image.src = canvas.toDataURL('image/png');
           reply.append(image); document.body.append(reply);
         }
@@ -83,8 +86,10 @@ public class BrowserTests
             foreach (var operation in new[] { Operation.Edit, Operation.Branch })
             {
                 launcher.Visits.Clear();
-                await service.RunAsync(operation, "change", [path], generated.ConversationUrl, (_, _) => Task.CompletedTask, default);
-                Assert.Equal(operation == Operation.Edit ? generated.ConversationUrl : "https://chatgpt.com/", launcher.Visits[0]);
+                var result = await service.RunAsync(operation, "change", [path], generated.ConversationUrl, (_, _) => Task.CompletedTask, default);
+                // An edit goes on in the conversation, which the tab is already showing; a branch starts a fresh chat, here by loading the site.
+                if (operation == Operation.Edit) { Assert.Equal(generated.ConversationUrl, result.ConversationUrl); Assert.DoesNotContain("https://chatgpt.com/", launcher.Visits); }
+                else Assert.Equal("https://chatgpt.com/", launcher.Visits[0]);
                 Assert.Equal(1, await launcher.Context.Pages[0].EvaluateAsync<int>("window.submission.files"));
                 Assert.Equal("change", await launcher.Context.Pages[0].EvaluateAsync<string>("window.submission.prompt"));
             }

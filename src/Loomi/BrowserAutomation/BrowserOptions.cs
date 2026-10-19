@@ -24,7 +24,11 @@ public class BrowserOptions
     /// <summary>How long to let the site render before judging the connection state.</summary>
     public int SettleTimeoutMs { get; set; } = 15000;
     public int GenerationTimeoutSeconds { get; set; } = 600;
-    public int StableSeconds { get; set; } = 8;
+    /// <summary>How long a picture must stay unchanged, once the site has stopped streaming, before it is taken. Counted only after the stop control
+    /// has gone, which is when the site has finished drawing; the eight seconds it used to be were all waiting after the fact.</summary>
+    public int StableSeconds { get; set; } = 4;
+    /// <summary>How often the page is looked at while waiting for the answer.</summary>
+    public int PollMs { get; set; } = 750;
     /// <summary>How many reference images one generation may carry, and how many files one upload request may hold.</summary>
     public int MaxInputs { get; set; } = 4;
     /// <summary>How long the site may take to show every attachment as ready before the run gives up on it.</summary>
@@ -63,6 +67,8 @@ public class Selectors
     public string QuestionForm { get; set; } = "form:has(input[type='text']), form:has(input:not([type]))";
     /// <summary>The answer field inside that form.</summary>
     public string QuestionInput { get; set; } = "input[type='text'], input:not([type])";
+    /// <summary>The site's own New chat button, which starts a fresh chat without loading the site again.</summary>
+    public string NewChat { get; set; } = "button[aria-label='New chat'], a[aria-label='New chat'], [data-testid='create-new-chat-button']";
     public string ImagePending { get; set; } = "[data-testid^='image-gen-loading'], [data-testid='generated-image-gallery'], [aria-label*='Generating image'], button[aria-label='Like this image']";
     /// <summary>The site labels a finished picture and also wraps it in a gallery of its own; either hook finds it, and the alt forms survive a rename of the gallery.</summary>
     public string GeneratedImage { get; set; } = "[data-testid='generated-image-gallery'] img, button[data-testid='generated-image-preview'] img, img[alt*='Generated'], img[alt*='generated'], img[alt*='تصویر']";
