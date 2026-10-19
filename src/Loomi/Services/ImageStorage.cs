@@ -22,6 +22,11 @@ public class ImageStorage(IConfiguration config) : IImageStorage
         : bytes[..4].SequenceEqual("RIFF"u8) && bytes[8..12].SequenceEqual("WEBP"u8) ? "webp"
         : null;
     public static string ContentTypeFor(string path) => Path.GetExtension(path) switch { ".png" => "image/png", ".webp" => "image/webp", _ => "image/jpeg" };
+    /// <summary>Where a smaller copy of the image at <paramref name="path"/> is kept: beside it, so whatever removes the image's folder removes its copies.</summary>
+    public static string PreviewOf(string path, int width) => path[..(path.LastIndexOf('/') + 1)] + PreviewName(Path.GetFileNameWithoutExtension(path), width.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    /// <summary>A generation's picture, image.*, has its folder to itself, so its copies are named by the width alone. A template's samples follow one
+    /// another in one folder, so theirs carry the sample's own name as well, and a replaced sample's copies never stand in for the next one's.</summary>
+    private static string PreviewName(string stem, string width) => stem == "image" ? $"preview-{width}.webp" : $"{stem}-preview-{width}.webp";
     public Task<string> SaveAsync(Guid project, Guid generation, byte[] bytes, CancellationToken ct) => WriteAsync($"projects/{project}/{generation}/image", bytes, ct);
     public Task<string> SaveUploadAsync(Guid user, Guid upload, byte[] bytes, CancellationToken ct) => WriteAsync($"uploads/{user}/{upload}", bytes, ct);
     public Task<string> SaveTemplateAsync(Guid template, byte[] bytes, CancellationToken ct) => WriteAsync($"templates/{template}/{Guid.NewGuid():N}", bytes, ct);
@@ -41,10 +46,13 @@ public class ImageStorage(IConfiguration config) : IImageStorage
         if (!full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal)) throw new InvalidOperationException("InvalidPath");
         return full;
     }
+    /// <summary>Removes the file and any copies made of it; a replaced template sample's would otherwise stay on disk with nothing pointing at them.</summary>
     public void Delete(string path)
     {
         var full = Resolve(path);
         if (File.Exists(full)) File.Delete(full);
+        if (Path.GetDirectoryName(full) is { } folder && Directory.Exists(folder))
+            foreach (var copy in Directory.GetFiles(folder, PreviewName(Path.GetFileNameWithoutExtension(full), "*"))) File.Delete(copy);
     }
     public void DeleteProject(Guid id)
     {

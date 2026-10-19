@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 namespace Loomi.Controllers;
 [ApiController, Authorize, Route("api/generations")]
-public class GenerationsController(AppDbContext db, GenerationService service, IImageStorage storage, QueueEstimates queue) : ControllerBase
+public class GenerationsController(AppDbContext db, GenerationService service, IImageStorage storage, QueueEstimates queue, ImagePreviews previews) : ControllerBase
 {
     private Viewer Me => Viewer.From(User);
     /// <summary>The caller's own waiting requests: how many are ahead of each and roughly how long until its turn. The same numbers the live updates carry.</summary>
@@ -40,12 +40,19 @@ public class GenerationsController(AppDbContext db, GenerationService service, I
         return Ok(new { cancelled });
     }
     private Task<Generation> CancelAsync(Generation g, CancellationToken ct) => Cancellation.CancelAsync(db, g, ct);
-    [HttpGet("{id:guid}/image")] public async Task<IActionResult> Image(Guid id, CancellationToken ct)
+    /// <summary>The picture as it was made, or with w a WebP copy no wider than that for a place that shows it smaller. Downloads leave w off.</summary>
+    [HttpGet("{id:guid}/image")] public async Task<IActionResult> Image(Guid id, string? w, CancellationToken ct)
     {
         var g = await db.Generations.AsNoTracking().OwnedBy(Me).FirstOrDefaultAsync(x => x.Id == id, ct);
         if (g?.LocalImagePath == null) return NotFound();
         var path = storage.Resolve(g.LocalImagePath);
         if (!System.IO.File.Exists(path)) return NotFound();
+        if (ImagePreviews.WidthFor(w) is { } width && await previews.GetAsync(g.LocalImagePath, width, ct) is { } preview)
+        {
+            // A generation's picture never changes, so neither does a copy of it: the browser keeps it for good and never asks again.
+            Response.Headers.CacheControl = "private, max-age=31536000, immutable";
+            return PhysicalFile(preview, "image/webp");
+        }
         return PhysicalFile(path, ImageStorage.ContentTypeFor(path), enableRangeProcessing: true);
     }
 }

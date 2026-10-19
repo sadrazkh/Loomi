@@ -16,7 +16,7 @@ public record TemplateRequest(Guid CategoryId, string? Title, string? Instructio
 /// <summary>Everyone browses templates and uses them; only the owner reads a template's prompt or changes anything. What a member is sent never
 /// carries the prompt: the list, the sample and the work made from it are all it takes to choose one and use it.</summary>
 [ApiController, Authorize, Route("api/templates")]
-public class TemplatesController(AppDbContext db, TemplateService templates, IImageStorage storage, IOptions<BrowserOptions> browser) : ControllerBase
+public class TemplatesController(AppDbContext db, TemplateService templates, IImageStorage storage, ImagePreviews previews, IOptions<BrowserOptions> browser) : ControllerBase
 {
     private Viewer Me => Viewer.From(User);
     private static string? SampleUrl(PromptTemplate t) => t.SamplePath is null ? null : $"/api/templates/{t.Id}/sample?v={t.UpdatedAt.Ticks}";
@@ -37,12 +37,14 @@ public class TemplatesController(AppDbContext db, TemplateService templates, IIm
             templates = visible.Where(t => t.CategoryId == c.Id).Select(t => new { t.Id, t.Title, t.Instructions, t.MinInputs, t.MaxInputs, sampleUrl = SampleUrl(t), price = prices[t.Provider] }).ToList()
         }).Where(c => c.templates.Count > 0));
     }
-    [HttpGet("{id:guid}/sample")] public async Task<IActionResult> Sample(Guid id, CancellationToken ct)
+    /// <summary>With w, a WebP copy no wider than that, as for a generation's picture: a card needs a fraction of what the sample weighs.</summary>
+    [HttpGet("{id:guid}/sample")] public async Task<IActionResult> Sample(Guid id, string? w, CancellationToken ct)
     {
         var template = await db.Templates.AsNoTracking().FirstOrDefaultAsync(t => t.Id == id && (t.IsActive || Me.IsOwner), ct) ?? throw new KeyNotFoundException();
         if (template.SamplePath is null || !System.IO.File.Exists(storage.Resolve(template.SamplePath))) return NotFound();
         // The address carries the version, so a sample can be kept a long while and still change the moment the owner replaces it.
         Response.Headers.CacheControl = "private, max-age=604800";
+        if (ImagePreviews.WidthFor(w) is { } width && await previews.GetAsync(template.SamplePath, width, ct) is { } preview) return PhysicalFile(preview, "image/webp");
         return PhysicalFile(storage.Resolve(template.SamplePath), ImageStorage.ContentTypeFor(template.SamplePath));
     }
     [HttpPost("{id:guid}/use")] public async Task<IActionResult> Use(Guid id, TemplateUseRequest request, CancellationToken ct)
