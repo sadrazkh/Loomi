@@ -27,7 +27,10 @@ watch(section, reveal);
   <OverviewPage v-if="section==='overview'"/>
   <UsersPage v-else-if="section==='users'"/>
   <AccountsPage v-else-if="section==='accounts'"/>
-  <TemplatesView v-else-if="section==='templates'" manage/>
+  <div v-else-if="section==='templates'" class="view">
+   <header class="view-head"><div><h1>{{ t('shAdminTemplates') }}</h1><p>{{ t('adTemplatesHelp') }}</p></div></header>
+   <TemplatesView manage/>
+  </div>
   <PricingPage v-else-if="section==='pricing'"/>
   <BotPage v-else-if="section==='bot'"/>
  </div>

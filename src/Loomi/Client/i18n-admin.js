@@ -2,7 +2,7 @@
 // Prefixes: ac my account, lg a ledger line, pk packages, ov overview, ad the other management pages, dr the user drawer, tc Telegram, bt the bot page.
 export default {
  en: {
-  adSep:' · ',
+  adSep:' · ', adTemplatesHelp:'The categories and templates people choose from. A template shows once it is active and has a sample.',
   acWallet:'Wallet', acRegular:'Regular credits', acRegularHelp:'Spent when no package covers a request.', acToday:"Today's images", acFree:'Free',
   acFreeVia:'“{0}” is running', acFromPackage:'From a package', acPackageLeft:'{0} credits left in “{1}”, until {2}', acFromCredits:'From your credits',
   acPackagesSpent:"Your packages' share for today is used up, so the rest comes from your credits.", acEachImage:'Each request is paid from your regular credits.',
@@ -81,7 +81,7 @@ export default {
   btMemberReminders:'A reminder 3 days before a package ends, and again on its last day.', btMemberBalance:'/balance shows their credits and packages.',
  },
  fa: {
-  adSep:'، ',
+  adSep:'، ', adTemplatesHelp:'دسته‌ها و قالب‌هایی که کاربرها از بینشان انتخاب می‌کنند. هر قالب وقتی فعال باشد و تصویر نمونه داشته باشد دیده می‌شود.',
   acWallet:'کیف اعتبار', acRegular:'اعتبار عادی', acRegularHelp:'وقتی هیچ بسته‌ای درخواست را پوشش ندهد، از این کم می‌شود.', acToday:'تصویرهای امروز', acFree:'رایگان',
   acFreeVia:'بسته‌ی «{0}» فعال است', acFromPackage:'از بسته', acPackageLeft:'{0} اعتبار در «{1}» مانده، تا {2}', acFromCredits:'از اعتبار عادی',
   acPackagesSpent:'سهم امروز بسته‌هایتان تمام شده؛ بقیه از اعتبار عادی کم می‌شود.', acEachImage:'هر درخواست از اعتبار عادی‌تان کم می‌شود.',
