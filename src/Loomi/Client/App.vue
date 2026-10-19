@@ -1,234 +1,59 @@
 <script setup>
-import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
-import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
-import { Plus, LayoutGrid, Images, Settings, Search, Moon, Sun, ArrowUp, ArrowLeft, ExternalLink, RefreshCw, ShieldCheck, LogOut, Menu, X, GitBranch, List, Trash2, Image, Layers, FolderOpen, ArrowUpRight, Monitor, Circle, LockKeyhole, Download, AlertTriangle, KeyRound, Copy, Paperclip, Send, MessagesSquare, MessageSquarePlus, LayoutTemplate, Bot, LoaderCircle, BarChart3 } from 'lucide-vue-next';
-import { messages } from './i18n';
-import Modal from './components/Modal.vue';
+import { onMounted } from 'vue';
+import { X, AlertTriangle } from 'lucide-vue-next';
+import AppSidebar from './components/AppSidebar.vue';
+import MobileBar from './components/MobileBar.vue';
+import LoginView from './views/LoginView.vue';
+import HomeView from './views/HomeView.vue';
+import ChatView from './views/ChatView.vue';
+import ChatsView from './views/ChatsView.vue';
+import GalleryView from './views/GalleryView.vue';
+import AccountView from './views/AccountView.vue';
+import AdminView from './views/AdminView.vue';
 import TemplatesView from './components/TemplatesView.vue';
-import GenerationCard from './components/GenerationCard.vue';
-import ChatTurn from './components/ChatTurn.vue';
-import ChangePassword from './components/ChangePassword.vue';
-import TelegramConnect from './components/TelegramConnect.vue';
-import ApiGuide from './components/ApiGuide.vue';
-import UsageView from './components/UsageView.vue';
-const lang = ref(localStorage.getItem('loomi.lang') || 'en');
-const theme = ref(localStorage.getItem('loomi.theme') || 'dark');
-const t = k => messages[lang.value]?.[k] || messages.en[k] || k;
-const locale = computed(() => lang.value === 'fa' ? 'fa-IR' : 'en-GB');
-watch([lang,theme], () => { document.documentElement.lang = lang.value; document.documentElement.dir = lang.value === 'fa' ? 'rtl':'ltr'; document.documentElement.dataset.lang = lang.value; document.documentElement.dataset.theme = theme.value; localStorage.setItem('loomi.lang',lang.value); localStorage.setItem('loomi.theme',theme.value); }, {immediate:true});
-const authenticated = ref(false), initialized = ref(false), username = ref(''), password = ref(''), me = ref(null), devKey = ref(''), error = ref(''), busy = ref(false), view = ref('projects'), mobileMenu = ref(false);
-const projects = ref([]), current = ref(null), generations = ref([]), gallery = ref([]), search = ref(''), prompt = ref(''), title = ref(''), modal = ref(null), selected = ref(null), editPrompt = ref(''), layout = ref('chat'), connected = ref({ready:false,stalled:null,desktopUrl:null,providers:[]}), live = ref(false), queueInfo = ref({});
-// The desktop only ever shows an account's own browser window: offered with none started, it opened onto an empty screen.
-const browserAccounts = computed(() => connected.value.providers.some(p => p.provider==='ChatGPT' && p.accounts>0));
-const browserOpen = computed(() => connected.value.providers.some(p => p.provider==='ChatGPT' && p.open>0));
-const positions = list => Object.fromEntries((list||[]).map(p => [p.id, p]));
-const accounts = ref([]), accountLabel = ref(''), accountTarget = ref(null), accountProvider = ref('ChatGPT'), accountKey = ref('');
-const users = ref([]), userName = ref(''), userPassword = ref(''), userQuota = ref(0), userCredits = ref(1500), userTarget = ref(null);
-const creditAmount = ref(100), creditNote = ref(''), prices = ref({});
-const tokens = ref([]), tokenName = ref(''), tokenTarget = ref(null), mintedToken = ref(''), copied = ref(false), userTokens = ref([]);
-// Reference images picked for the next prompt; each is already on the server, so sending only names their ids.
-const attachments = ref([]), fileInput = ref(null), MAX_INPUTS = 4;
-// Mirrors the Provider enum on the server; a price row exists for each, whether or not an account does yet.
-const PROVIDERS = ['ChatGPT','Gemini'], OPERATIONS = ['','Generate','Edit','Branch'];
-const isOwner = computed(() => me.value?.role === 'Owner');
-let csrf='', hub, timer, refreshing=false;
-const filtered = computed(() => projects.value.filter(p => p.title.toLocaleLowerCase().includes(search.value.toLocaleLowerCase())));
-const count = computed(() => projects.value.reduce((sum,p)=>sum+p.generationCount,0));
-const ordered = computed(() => {
- if(layout.value!=='tree') return generations.value.map(g=>({g,depth:0}));
- const result=[], seen=new Set();
- function visit(parent, depth) { for(const g of generations.value.filter(g=>g.parentGenerationId===parent)) { if(seen.has(g.id)) continue; seen.add(g.id); result.push({g,depth}); visit(g.id,depth+1); } }
- visit(null,0); return result;
-});
-const number = id => generations.value.findIndex(g=>g.id===id)+1;
-const FINISHED = ['Completed','Answered','Failed','Cancelled'];
-// A project is one conversation, which takes one message at a time as the site itself does: the composer waits while anything in it is unfinished.
-const waiting = computed(() => generations.value.some(g => !FINISHED.includes(g.status)));
-const latest = computed(() => generations.value.at(-1));
-// Until something in it was answered the next message starts the chat, so which provider answers is still open.
-const started = computed(() => generations.value.some(g => ['Completed','Answered'].includes(g.status)));
-// The picture the next message works on anyway: editing it is only a matter of writing that message.
-const latestPicture = computed(() => generations.value.findLast(g => g.status==='Completed' && g.imageUrl));
-const placeholder = computed(() => t(!started.value?'prompt':latest.value?.status==='Answered'?'answerPrompt':'continuePrompt'));
-const composerInput = ref(null), firstMessage = ref('');
-// Polling swaps every generation object every five seconds, so only the newest turn's own state may move the page; a status tick on it follows a reader already at the bottom, never one reading back.
-const newest = computed(() => { const g=generations.value.at(-1); return view.value==='project'&&layout.value==='chat'&&g?[g.id,g.status,g.imageUrl,g.replyText?.length].join('|'):''; });
-watch(newest, async (next, prev='') => { if(!next) return; const root=document.documentElement, added=next.split('|')[0]!==prev.split('|')[0]; if(!added&&window.innerHeight+window.scrollY<root.scrollHeight-240) return; await nextTick(); window.scrollTo({top:root.scrollHeight,behavior:prev?'smooth':'auto'}); });
-const ready = computed(() => connected.value.ready === true);
-const provider = ref('ChatGPT');
-// Only providers this workspace actually has an account for; with one there is no choice to offer.
-const choices = computed(() => (connected.value.providers||[]).filter(p => p.accounts > 0).map(p => p.provider));
-watch(choices, list => { if(list.length && !list.includes(provider.value)) provider.value = list[0]; });
-// Null remaining means no daily limit at all, and there is nothing to show for that.
-const quota = computed(() => me.value?.dailyRemaining != null ? me.value : null);
-async function api(path, method='GET', body) {
- let response;
- try { response = await fetch(path,{method,credentials:'same-origin',headers:{'Content-Type':'application/json',...(method!=='GET'?{'X-CSRF-TOKEN':csrf}:{})},body:body?JSON.stringify(body):undefined}); } catch { throw new Error('NetworkError'); }
- if(response.status===401 && !path.endsWith('/login')) { authenticated.value=false; throw new Error('SessionExpired'); }
- if(!response.ok) { const payload=await response.json().catch(()=>({})); throw new Error(response.status===429?'RateLimited':payload.error||'ServerError'); }
- return response.status===204?null:response.json();
-}
-async function action(fn) { if(busy.value) return; busy.value=true; error.value=''; try { await fn(); } catch(e) { error.value=e.message; } finally { busy.value=false; } }
-async function session() { const s=await api('/api/session'); csrf=s.csrfToken; authenticated.value=s.authenticated; me.value=s.authenticated?{username:s.username,role:s.role,dailyQuota:s.dailyQuota,dailyUsed:s.dailyUsed,dailyRemaining:s.dailyRemaining,credits:s.credits}:null; devKey.value=s.devAccessKey||''; if(devKey.value && !authenticated.value && !password.value) { username.value='owner'; password.value=devKey.value; } }
-async function login() { await action(async()=>{await api('/api/session/login','POST',{username:username.value,password:password.value}); password.value=''; await session(); await start();}); }
-async function logout() { await action(async()=>{await api('/api/session/logout','POST'); await hub?.stop(); authenticated.value=false; me.value=null; projects.value=[]; current.value=null; generations.value=[]; gallery.value=[]; await session();}); }
-async function refresh() {
- if(!authenticated.value || refreshing) return; refreshing=true;
- try { const [ps, status, , queue]=await Promise.all([api('/api/projects'),api('/api/auth/status'),session(),api('/api/generations/queue')]); projects.value=ps; connected.value=status; queueInfo.value=positions(queue);
- if(view.value==='settings' && isOwner.value) { accounts.value=await api('/api/auth/accounts'); users.value=await api('/api/users'); }
- if(current.value) { const id=current.value.id; const gs=await api(`/api/projects/${id}/generations`); if(current.value?.id===id) { generations.value=gs; const updated=ps.find(p=>p.id===id); if(updated)current.value=updated; } }
- } finally { refreshing=false; }
-}
-async function start() {
- await refresh();
- if(hub) await hub.stop();
- hub=new HubConnectionBuilder().withUrl('/hubs/status').withAutomaticReconnect().configureLogging(LogLevel.None).build();
- hub.on('QueueUpdated',list=>queueInfo.value=positions(list));
- hub.on('GenerationUpdated',g=>{if(current.value?.id===g.projectId){const i=generations.value.findIndex(x=>x.id===g.id); if(i>=0)generations.value[i]=g;else generations.value.push(g);} if(FINISHED.includes(g.status))refresh().catch(()=>{});});
- hub.onreconnecting(()=>live.value=false); hub.onreconnected(()=>{live.value=true;refresh().catch(()=>{});}); hub.onclose(()=>live.value=false);
- try { await hub.start(); live.value=true; } catch { live.value=false; }
-}
-async function openProject(p) { await action(async()=>{const gs=await api(`/api/projects/${p.id}/generations`); current.value=p; generations.value=gs; view.value='project'; mobileMenu.value=false;}); }
-// A template makes its project on the server, so the list held here does not have it yet; the stand-in only lasts until the next refresh finds it.
-async function openCreated({projectId,title}) { let p=null; try { projects.value=await api('/api/projects'); p=projects.value.find(x=>x.id===projectId); } catch {} layout.value='chat'; await openProject(p||{id:projectId,title}); refresh().catch(()=>{}); }
-async function navigate(next) { view.value=next; mobileMenu.value=false; if(next==='gallery') await action(async()=>{gallery.value=(await Promise.all(projects.value.map(p=>api(`/api/projects/${p.id}/generations`)))).flat().filter(g=>g.imageUrl);}); if(next==='settings') await action(async()=>{await loadTokens(); if(isOwner.value){await loadAccounts(); await loadUsers(); await loadPricing();}}); }
-// With a first message the chat starts at once, named by that message unless given a title; a title alone opens it empty.
-async function createProject() { await action(async()=>{if(firstMessage.value.trim()) await startChat({title:title.value.trim()||null,prompt:firstMessage.value}); else {const p=await api('/api/projects','POST',{title:title.value}); current.value=p; generations.value=[]; modal.value=null; view.value='project'; await refresh();} title.value=''; firstMessage.value='';}); }
-function newProject() { title.value='';firstMessage.value='';modal.value='new';mobileMenu.value=false; }
-// A new chat is a new project begun by its first message, and the page moves into it at once, as a chat app does.
-async function startChat(body) { const {project,generation}=await api('/api/projects/start','POST',{provider:provider.value,...body}); current.value=project; generations.value=[generation]; modal.value=null; view.value='project'; mobileMenu.value=false; await refresh(); }
-// With nothing typed there is no first message yet, so the dialog asks for one.
-async function newChat() { if(!prompt.value.trim()) return newProject(); await action(async()=>{await startChat({prompt:prompt.value,inputs:attachments.value.map(a=>({uploadId:a.id}))}); prompt.value=''; attachments.value=[];}); }
-async function cancelOne(g) { await action(async()=>{await api(`/api/generations/${g.id}/cancel`,'POST'); await refresh(); if(current.value) generations.value=await api(`/api/projects/${current.value.id}/generations`);}); }
-async function cancelAll() { await action(async()=>{await api('/api/generations/cancel','POST'); modal.value=null; await refresh(); if(current.value) generations.value=await api(`/api/projects/${current.value.id}/generations`);}); }
-async function loadAccounts() { accounts.value=await api('/api/auth/accounts'); }
-// Built as one string: separators between optional parts are fragile in a template, where trailing whitespace is condensed away.
-const accountLine = a => [a.provider, a.busy?t('busy'):t(a.state), a.keyHint&&`${t('keyLabel')}: ${a.keyHint}`,
- `${t('lastUsed')}: ${a.lastUsedAt?new Date(a.lastUsedAt).toLocaleDateString(locale.value):t('never')}`].filter(Boolean).join(' · ');
-function newAccount() { accountLabel.value='';accountProvider.value='ChatGPT';accountKey.value='';modal.value='account'; }
-function accountAction(kind,a) { accountTarget.value=a;modal.value=kind; }
-async function createAccount() { await action(async()=>{await api('/api/auth/accounts','POST',{label:accountLabel.value,provider:accountProvider.value,apiKey:accountProvider.value==='Gemini'?accountKey.value:null});modal.value=null;accountKey.value='';await loadAccounts();}); }
-async function connectAccount(a) { await action(async()=>{await api(`/api/auth/accounts/${a.id}/connect`,'POST');await loadAccounts();}); }
-async function checkAccount(a) { await action(async()=>{const status=await api(`/api/auth/accounts/${a.id}/status`);const i=accounts.value.findIndex(x=>x.id===a.id);if(i>=0)accounts.value[i]={...accounts.value[i],...status};}); }
-async function updateAccount(a,changes) { await action(async()=>{const updated=await api(`/api/auth/accounts/${a.id}`,'PATCH',changes);const i=accounts.value.findIndex(x=>x.id===a.id);if(i>=0)accounts.value[i]=updated;}); }
-async function resetAccount() { await action(async()=>{await api(`/api/auth/accounts/${accountTarget.value.id}/reset`,'POST');modal.value=null;await loadAccounts();}); }
-async function deleteAccount() { await action(async()=>{await api(`/api/auth/accounts/${accountTarget.value.id}`,'DELETE');modal.value=null;await loadAccounts();}); }
-async function loadUsers() { users.value=await api('/api/users'); }
-async function loadPricing() { const rules=await api('/api/pricing'); const next={}; for(const r of rules) next[r.provider+'|'+(r.operation||'')]=String(r.cost); prices.value=next; }
-async function savePricing() { await action(async()=>{const rules=Object.entries(prices.value).filter(([,v])=>String(v).trim()!=='').map(([k,v])=>{const parts=k.split('|'); return {provider:parts[0],operation:parts[1]||null,cost:Number(v)};}); await api('/api/pricing','PUT',rules); await loadPricing();}); }
-function grantTo(u) { userTarget.value=u; creditAmount.value=100; creditNote.value=''; modal.value='credits'; }
-async function grantCredits() { await action(async()=>{await api('/api/users/'+userTarget.value.id+'/credits','POST',{amount:Number(creditAmount.value),note:creditNote.value}); modal.value=null; await loadUsers();}); }
-function newUser() { userName.value='';userPassword.value='';userQuota.value=0;userCredits.value=1500;modal.value='user'; }
-function userAction(kind,u) { userTarget.value=u;userPassword.value='';modal.value=kind; }
-// Zero means no ceiling at all, and a pre-upgrade owner may still carry the old unbounded sentinel; neither reads as a number.
-const quotaLabel = u => u.dailyQuota===0||u.dailyQuota>100000?t('unlimited'):u.dailyQuota.toLocaleString(locale.value);
-async function createUser() { await action(async()=>{await api('/api/users','POST',{username:userName.value,password:userPassword.value,dailyQuota:Number(userQuota.value),credits:Number(userCredits.value)});modal.value=null;userPassword.value='';await loadUsers();}); }
-async function updateUser(u,changes) { await action(async()=>{const updated=await api(`/api/users/${u.id}`,'PATCH',changes);const i=users.value.findIndex(x=>x.id===u.id);if(i>=0)users.value[i]=updated;}); }
-async function resetUserPassword() { await action(async()=>{await api(`/api/users/${userTarget.value.id}/password`,'POST',{password:userPassword.value});modal.value=null;userPassword.value='';}); }
-async function deleteUser() { await action(async()=>{await api(`/api/users/${userTarget.value.id}`,'DELETE');modal.value=null;await loadUsers();}); }
-async function loadTokens() { tokens.value=await api('/api/tokens'); }
-// The token only ever travels one way: the box is emptied once it is accepted, and the server hands back no more than a hint of it.
-function newToken() { tokenName.value='';modal.value='newToken'; }
-// The secret lives only in this one response; once the dialog closes there is nothing left anywhere to copy.
-async function createToken() { await action(async()=>{const minted=await api('/api/tokens','POST',{name:tokenName.value}); mintedToken.value=minted.token; copied.value=false; modal.value='tokenCreated'; await loadTokens();}); }
-async function copyToken() { try { await navigator.clipboard.writeText(mintedToken.value); copied.value=true; } catch { copied.value=false; } }
-function tokenAction(k) { tokenTarget.value=k;modal.value='tokenRevoke'; }
-async function revokeToken() { await action(async()=>{await api(`/api/tokens/${tokenTarget.value.id}`,'DELETE');modal.value=null;await loadTokens();}); }
-async function showUserTokens(u) { await action(async()=>{userTarget.value=u; userTokens.value=await api(`/api/users/${u.id}/tokens`); modal.value='userTokens';}); }
-async function revokeUserToken(k) { await action(async()=>{await api(`/api/users/${userTarget.value.id}/tokens/${k.id}`,'DELETE'); userTokens.value=await api(`/api/users/${userTarget.value.id}/tokens`);}); }
-// Inside a project there is only the next message: the server decides whether it continues the conversation, reopens it from the latest picture or starts it.
-async function submit() { if(!prompt.value.trim()||!current.value||waiting.value) return; await action(async()=>{const g=await api(`/api/projects/${current.value.id}/messages`,'POST',{prompt:prompt.value,provider:provider.value,inputs:attachments.value.map(a=>({uploadId:a.id}))}).catch(async e=>{if(e.message==='ProjectBusy') await reload().catch(()=>{}); throw e;}); if(!generations.value.some(x=>x.id===g.id)) generations.value.push(g); prompt.value='';attachments.value=[];await refresh();}); }
-// Refused as busy, the chat has work this page has not seen yet, from another tab or device; showing it is what explains the wait.
-async function reload() { const id=current.value?.id; if(!id) return; const gs=await api(`/api/projects/${id}/generations`); if(current.value?.id===id) generations.value=gs; }
-// Every multipart post goes through here, so a template's sample carries the same CSRF header and error mapping as the composer's files.
-async function postForm(path, form) {
- let response;
- try { response=await fetch(path,{method:'POST',credentials:'same-origin',headers:{'X-CSRF-TOKEN':csrf},body:form}); } catch { throw new Error('NetworkError'); }
- if(response.status===401) { authenticated.value=false; throw new Error('SessionExpired'); }
- if(!response.ok) { const payload=await response.json().catch(()=>({})); throw new Error(response.status===413?'FileTooLarge':response.status===429?'RateLimited':payload.error||'ServerError'); }
- return response.json();
-}
-async function uploadFiles(files) { const form=new FormData(); for(const f of files) form.append('files',f); return postForm('/api/uploads',form); }
-async function upload(files) { for(const u of await uploadFiles(files)) attachments.value.push({id:u.id,url:`/api/uploads/${u.id}`}); }
-function pickFiles() { fileInput.value?.click(); }
-async function attach(e) { const files=[...e.target.files].slice(0,MAX_INPUTS-attachments.value.length); e.target.value=''; if(files.length) await action(()=>upload(files)); }
-// Best effort: a file nobody sends is swept after a day anyway.
-function detach(a) { attachments.value=attachments.value.filter(x=>x.id!==a.id); api(`/api/uploads/${a.id}`,'DELETE').catch(()=>{}); }
-// Editing the chat's latest picture is just the next message, so it only points at the composer; an older picture has its own call, which sends it along.
-function operation(kind,g) { if(kind==='edit'&&g.id===latestPicture.value?.id) { composerInput.value?.focus(); return; } selected.value=g;editPrompt.value='';modal.value=kind; }
-const opening = (text,n) => { const words=text.trim().split(/\s+/).join(' '); return words.length<=n?words:words.slice(0,n).trimEnd()+'…'; };
-// A branch is a chat of its own, named after the chat it left and what it tries there, so several branches of one chat stay apart in the list;
-// the source is kept short so the words that tell siblings apart come early.
-async function submitOperation() { await action(async()=>{if(modal.value==='branch') return startChat({title:`${opening(current.value?.title||'',32)} ↳ ${opening(editPrompt.value,48)}`.trim(),prompt:editPrompt.value,inputs:[{generationId:selected.value.id}]}); const g=await api(`/api/generations/${selected.value.id}/edit`,'POST',{prompt:editPrompt.value});generations.value.push(g);modal.value=null;await refresh();}); }
-async function deleteProject() { await action(async()=>{await api(`/api/projects/${current.value.id}`,'DELETE');current.value=null;generations.value=[];modal.value=null;view.value='projects';await refresh();}); }
-function preview(g){selected.value=g;modal.value='preview';}
-onMounted(async()=>{try{await session();if(authenticated.value)await start();}catch(e){error.value=e.message;}finally{initialized.value=true;} timer=setInterval(()=>refresh().catch(()=>{}),5000);});
-onBeforeUnmount(()=>{clearInterval(timer);hub?.stop();});
+import { t, locale, authenticated, initialized, me, error, busy, isOwner, ready, statusKnown, view, api, action, postForm, uploadFiles, openCreated, go, boot } from './core';
+// The frame only: which page shows, the side menu or the phone bars around it, and the one place errors surface. Each page owns its own markup and state.
+onMounted(boot);
+const dismiss = () => { error.value = ''; };
 </script>
 
 <template>
- <div v-if="!authenticated" class="login-page">
-  <div class="login-decoration" aria-hidden="true"><div class="orbital one"></div><div class="orbital two"></div><div class="orbital three"></div><span>L</span></div>
-  <form class="login-panel" @submit.prevent="login"><div class="brand"><span class="brand-mark">L</span><strong>LOOMI</strong><span class="kicker">{{ t('private') }}</span></div><div class="eyebrow">{{ t('workspace') }}</div><h1>{{ t('login') }}</h1><p class="muted">{{ t('loginHelp') }}</p><p v-if="devKey" class="dev-note"><ShieldCheck/><span>{{ t('devMode') }} <code dir="ltr">{{ devKey }}</code></span></p><label for="username">{{ t('username') }}</label><input id="username" v-model="username" dir="ltr" autocomplete="username" required maxlength="64"><label for="password">{{ t('password') }}</label><input id="password" v-model="password" dir="ltr" type="password" autocomplete="current-password" required maxlength="512"><p v-if="error" role="alert" class="error-text">{{ t(error) }}</p><button class="primary full" :disabled="busy||!initialized||!username.trim()||!password"><LockKeyhole/>{{ busy?t('processing'):t('unlock') }}</button><div class="login-footer"><ShieldCheck/>{{ t('private') }}<span class="grow"/><button type="button" @click="lang=lang==='en'?'fa':'en'">{{ lang==='en'?'فارسی':'English' }}</button></div></form>
- </div>
- <div v-else class="app-shell">
-  <div v-if="mobileMenu" class="mobile-scrim" @click="mobileMenu=false"></div>
-  <aside :class="{open:mobileMenu}">
-   <div class="brand"><span class="brand-mark">L</span><strong>LOOMI</strong><span class="grow"/><button class="icon-button mobile-only" :aria-label="t('close')" @click="mobileMenu=false"><X/></button></div>
-   <div class="sidebar-action"><button class="primary full" @click="newProject"><Plus/>{{ t('newProject') }}</button></div>
-   <nav><button :class="{active:view==='projects'||view==='project'}" @click="navigate('projects')"><LayoutGrid/>{{ t('projects') }}<span class="grow"/><span class="count">{{ projects.length }}</span></button><button :class="{active:view==='templates'}" @click="navigate('templates')"><LayoutTemplate/>{{ t('templates') }}</button><button :class="{active:view==='gallery'}" @click="navigate('gallery')"><Images/>{{ t('gallery') }}</button><button v-if="isOwner" :class="{active:view==='usage'}" @click="navigate('usage')"><BarChart3/>{{ t('usage') }}</button><button :class="{active:view==='settings'}" @click="navigate('settings')"><Settings/>{{ t('settings') }}</button><div class="nav-heading">{{ t('recent') }}</div><button v-for="p in projects.slice(0,8)" :key="p.id" class="recent-project" :class="{selected:current?.id===p.id&&view==='project'}" @click="openProject(p)"><span class="project-swatch"><img v-if="p.coverId" :src="`/api/generations/${p.coverId}/image`" alt=""><FolderOpen v-else/></span><span class="truncate">{{ p.title }}</span></button></nav>
-   <footer class="sidebar-footer"><button class="connection-button" @click="modal='connection'"><i class="status-dot" :class="{on:ready}"></i><span><strong>{{ t(ready?'Connected':'Disconnected') }}</strong><small>{{ t('providers') }}</small></span><span class="grow"/><ExternalLink/></button><div class="preferences"><button :class="{active:lang==='en'}" @click="lang='en'">EN</button><button :class="{active:lang==='fa'}" @click="lang='fa'">فا</button><span class="grow"/><button :aria-label="t('theme')" @click="theme=theme==='dark'?'light':'dark'"><Sun v-if="theme==='dark'"/><Moon v-else/></button></div><div v-if="me?.credits!=null" class="owner"><span class="avatar"><Layers/></span><span><strong>{{ t('creditsLeft') }}</strong><small>{{ me.credits.toLocaleString(locale) }}</small></span><span class="grow"/></div><div v-if="quota" class="owner"><span class="avatar"><Layers/></span><span><strong>{{ t('quotaLeft') }}</strong><small>{{ quota.dailyRemaining.toLocaleString(locale) }} / {{ quota.dailyQuota.toLocaleString(locale) }}</small></span><span class="grow"/></div><div class="owner"><span class="avatar"><ShieldCheck/></span><span><strong dir="auto">{{ me?.username || t('private') }}</strong><small>{{ me?.role ? t(me.role) : t('local') }}</small></span><span class="grow"/><button class="icon-button" :aria-label="t('logout')" @click="logout"><LogOut/></button></div></footer>
-  </aside>
-  <main>
-   <header class="topbar"><button class="icon-button mobile-only" :aria-label="t('showMenu')" @click="mobileMenu=true"><Menu/></button><span class="breadcrumb">{{ t('workspace') }} <span>/</span> <strong>{{ view==='project'?current?.title:t(view) }}</strong></span><span class="grow"/><span class="live-label"><i class="status-dot" :class="{on:live}"></i>{{ live?t('live'):t('offline') }}</span></header>
-   <div v-if="error" class="toast" role="alert"><span>{{ t(error) }}</span><button class="icon-button" :aria-label="t('close')" @click="error=''"><X/></button></div>
-   <div v-if="view==='projects'" class="page">
-    <div class="page-heading"><div><div class="eyebrow">{{ t('projects') }} / {{ String(projects.length).padStart(2,'0') }}</div><h1>{{ t('allProjects') }}</h1><p>{{ t('intro') }}</p></div><button class="primary" @click="newProject"><Plus/>{{ t('newProject') }}</button></div>
-    <div class="stats"><div><FolderOpen/><span>{{ t('projectCount') }}</span><strong>{{ projects.length.toLocaleString(locale) }}</strong></div><div><Layers/><span>{{ t('imageCount') }}</span><strong>{{ count.toLocaleString(locale) }}</strong></div><div><ShieldCheck/><span>{{ t('local') }}</span><strong class="small-stat">{{ t('private') }}</strong></div></div>
-    <div class="toolbar"><div class="section-label">{{ t('projects') }}</div><span class="grow"/><div class="search"><Search/><input v-model="search" :placeholder="t('search')" :aria-label="t('search')"></div></div>
-    <div v-if="!projects.length" class="empty-state"><div class="empty-art" aria-hidden="true"><div></div><div></div><div><Image/></div></div><div class="eyebrow">LOOMI / 001</div><h2>{{ t('emptyTitle') }}</h2><p>{{ t('chatEmptyBody') }}</p><button class="primary" @click="ready?newProject():navigate('settings')"><Plus/>{{ ready?t('firstProject'):t('connect') }}</button></div>
-    <div v-else-if="!filtered.length" class="empty-state"><Search/><h2>{{ t('noMatches') }}</h2></div>
-    <div v-else class="project-grid"><button v-for="p in filtered" :key="p.id" class="project-card" @click="openProject(p)"><div class="project-cover"><img v-if="p.coverId" :src="`/api/generations/${p.coverId}/image`" :alt="p.title" loading="lazy"><div v-else class="cover-empty"><Image/><span>LOOMI</span></div><span class="cover-count"><Layers/>{{ p.generationCount }}</span></div><div class="project-card-body"><h2 dir="auto">{{ p.title }}</h2><ArrowUpRight/><p>{{ new Date(p.updatedAt).toLocaleDateString(locale) }} <span>·</span> {{ t(p.status) }}</p></div></button><button class="add-project" @click="newProject"><Plus/><span>{{ t('newProject') }}</span></button></div>
-   </div>
-   <div v-else-if="view==='project' && current" class="page project-page" :class="{'chat-mode':layout==='chat'}">
-    <div class="project-heading"><button class="icon-button" :aria-label="t('back')" @click="navigate('projects')"><ArrowLeft class="directional"/></button><div><div class="eyebrow">{{ t('projects') }}</div><h1 dir="auto">{{ current.title }}</h1></div><span class="grow"/><a v-if="current.conversationUrl" class="button" :href="current.conversationUrl" target="_blank" rel="noopener noreferrer"><ExternalLink/><span>{{ t('viewChat') }}</span></a><button class="icon-button danger" :aria-label="t('delete')" @click="modal='delete'"><Trash2/></button></div>
-    <div class="toolbar"><span class="section-label">{{ t('generations') }} <span class="muted">/ {{ generations.length }}</span></span><span class="grow"/><div class="segmented"><button :class="{active:layout==='chat'}" @click="layout='chat'"><MessagesSquare/>{{ t('chat') }}</button><button :class="{active:layout==='timeline'}" @click="layout='timeline'"><List/>{{ t('timeline') }}</button><button :class="{active:layout==='tree'}" @click="layout='tree'"><GitBranch/>{{ t('tree') }}</button></div></div>
-    <div v-if="!generations.length" class="empty-state project-empty"><Image/><h2>{{ t('projectEmpty') }}</h2><p>{{ t('projectEmptyBody') }}</p></div>
-    <div v-else-if="layout==='chat'" class="chat"><ChatTurn v-for="g in generations" :key="g.id" :generation="g" :queue="queueInfo[g.id]" :t="t" :number="number(g.id)" :parent-number="number(g.parentGenerationId)" :latest="g.id===latestPicture?.id" :locale="locale" @edit="operation('edit',$event)" @branch="operation('branch',$event)" @preview="preview" @cancel="cancelOne"/></div>
-    <div v-else class="generations" :class="layout"><div v-for="item in ordered" :key="item.g.id" class="generation-node" :style="{'--depth':Math.min(item.depth,5)}"><div v-if="layout==='tree'&&item.g.parentGenerationId" class="lineage"><GitBranch/>{{ t('branchFrom') }} {{ String(number(item.g.parentGenerationId)).padStart(2,'0') }}</div><GenerationCard :generation="item.g" :queue="queueInfo[item.g.id]" :t="t" :number="number(item.g.id)" :parent-number="number(item.g.parentGenerationId)" :latest="item.g.id===latestPicture?.id" :locale="locale" @edit="operation('edit',$event)" @branch="operation('branch',$event)" @preview="preview" @cancel="cancelOne"/></div></div>
-    <p v-if="connected.stalled" class="dev-note"><AlertTriangle/><span>{{ t(connected.stalled) }}</span></p>
-    <form class="composer" @submit.prevent="submit"><div class="composer-mode" :class="{on:started&&!waiting}"><LoaderCircle v-if="waiting" class="spin"/><MessagesSquare v-else-if="started"/><MessageSquarePlus v-else/><span aria-live="polite">{{ t(waiting?'chatWaiting':started?'chatContinues':'chatStarts') }}</span><span class="grow"/><button v-if="generations.length" type="button" :disabled="busy" :title="t('chatNewHint')" @click="newChat"><MessageSquarePlus/>{{ t('chatNew') }}</button></div><div v-if="attachments.length" class="attachments"><span v-for="a in attachments" :key="a.id" class="attachment"><img :src="a.url" alt=""><button type="button" class="icon-button" :aria-label="t('removeAttachment')" @click="detach(a)"><X/></button></span></div><textarea ref="composerInput" v-model="prompt" :placeholder="placeholder" :aria-label="placeholder" rows="3" maxlength="12000" @keydown.enter.ctrl.prevent="submit" @keydown.enter.meta.prevent="submit"></textarea><footer><select v-if="choices.length>1&&!started" v-model="provider" class="composer-provider" :aria-label="t('provider')"><option v-for="p in choices" :key="p" :value="p">{{ p }}</option></select><input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden @change="attach"><button type="button" :disabled="busy||attachments.length>=MAX_INPUTS" :title="t('attachHint')" @click="pickFiles"><Paperclip/>{{ t('attach') }}<span class="count">{{ attachments.length }}/{{ MAX_INPUTS }}</span></button><span class="composer-state"><i class="status-dot" :class="{on:ready}"></i>{{ ready?t('connectedHint'):t('notConnectedHint') }}</span><span class="grow"/><small v-if="me?.credits!=null">{{ t('creditsLeft') }}: {{ me.credits.toLocaleString(locale) }}</small><small v-if="quota">{{ t('quotaLeft') }}: {{ quota.dailyRemaining.toLocaleString(locale) }}</small><button v-if="waiting" type="button" class="danger" @click="modal='cancelAll'"><X/>{{ t('cancelAll') }}</button><small>{{ t('composerHint') }}</small><button class="primary" :disabled="busy||waiting||!prompt.trim()||!ready||quota?.dailyRemaining===0"><ArrowUp/>{{ t(started?'sendReply':'send') }}</button></footer></form>
-   </div>
+ <LoginView v-if="!authenticated"/>
+ <div v-else class="shell" :class="{ 'in-chat': view==='chat' }">
+  <AppSidebar/>
+  <div class="stage">
+   <MobileBar/>
+   <p v-if="!ready && statusKnown" class="service" role="status">
+    <AlertTriangle/><span>{{ t(isOwner ? 'shServiceDownOwner' : 'shServiceDown') }}</span>
+    <button v-if="isOwner" class="btn btn-sm" @click="go('admin','accounts')">{{ t('shOpenAccounts') }}</button>
+   </p>
+   <HomeView v-if="view==='home'"/>
+   <ChatView v-else-if="view==='chat'"/>
+   <ChatsView v-else-if="view==='chats'"/>
    <TemplatesView v-else-if="view==='templates'" :t="t" :locale="locale" :is-owner="isOwner" :api="api" :upload="uploadFiles" :post-form="postForm" :action="action" :busy="busy" :error="error" :credits="me?.credits??null" @open="openCreated"/>
-   <div v-else-if="view==='gallery'" class="page"><div class="page-heading"><div><div class="eyebrow">{{ t('workspace') }}</div><h1>{{ t('gallery') }}</h1><p>{{ t('storageInfo') }}</p></div><span class="count">{{ gallery.length }}</span></div><div v-if="!gallery.length" class="empty-state"><Images/><h2>{{ t('noImages') }}</h2></div><div class="gallery"><button v-for="g in gallery" :key="g.id" class="gallery-image" @click="preview(g)"><img :src="g.imageUrl" :alt="g.prompt||g.templateTitle||''" loading="lazy"><p dir="auto">{{ g.prompt||g.templateTitle }}</p></button></div></div>
-   <UsageView v-else-if="view==='usage' && isOwner" :t="t" :locale="locale" :api="api" :action="action" :busy="busy"/>
-   <div v-else-if="view==='settings'" class="page"><div class="page-heading"><div><div class="eyebrow">{{ t('workspace') }}</div><h1>{{ t('settings') }}</h1></div></div><section class="settings-panel"><h2>{{ t('appearance') }}</h2><div class="setting-row"><span>{{ t('language') }}</span><div class="segmented"><button :class="{active:lang==='en'}" @click="lang='en'">English</button><button :class="{active:lang==='fa'}" @click="lang='fa'">فارسی</button></div></div><div class="setting-row"><span>{{ t('theme') }}</span><div class="segmented"><button :class="{active:theme==='dark'}" @click="theme='dark'"><Moon/>{{ t('dark') }}</button><button :class="{active:theme==='light'}" @click="theme='light'"><Sun/>{{ t('light') }}</button></div></div></section><section class="settings-panel"><h2>{{ t('security') }}</h2><p>{{ t('sessionPrivacy') }}</p><div class="setting-row"><span class="status">{{ t(ready?'Connected':'Disconnected') }}</span><button @click="modal='connection'"><Monitor/>{{ t('connection') }}</button></div><div class="setting-row"><span>{{ t('private') }}</span><button @click="logout"><LogOut/>{{ t('logout') }}</button></div></section>
-    <section class="settings-panel"><h2>{{ t('changePassword') }}</h2><ChangePassword :t="t" :api="api"/></section>
-    <TelegramConnect :t="t" :locale="locale" :is-owner="isOwner" :api="api"/>
-    <section class="settings-panel"><h2>{{ t('tokens') }}</h2><p>{{ t('tokensHelp') }}</p><div v-if="!tokens.length" class="accounts-empty"><KeyRound/><span>{{ t('noTokens') }}</span></div><div v-for="k in tokens" :key="k.id" class="account-row"><span class="account-name"><strong dir="auto">{{ k.name }}</strong><small><code dir="ltr">lm_{{ k.prefix }}_…</code> <span>·</span> {{ t('created') }}: {{ new Date(k.createdAt).toLocaleDateString(locale) }} <span>·</span> {{ t('lastUsed') }}: {{ k.lastUsedAt?new Date(k.lastUsedAt).toLocaleString(locale):t('never') }}</small></span><span class="grow"/><button class="danger" :disabled="busy" @click="tokenAction(k)">{{ t('revoke') }}</button></div><footer class="accounts-footer"><button class="primary" :disabled="busy||tokens.length>=20" @click="newToken"><Plus/>{{ t('newToken') }}</button><a v-if="isOwner" class="button" href="/openapi/v1.json" target="_blank" rel="noopener noreferrer"><ExternalLink/>{{ t('apiDocs') }}</a><span class="grow"/><small dir="auto">{{ t('apiUsage') }} <code dir="ltr">Authorization: Bearer lm_…</code></small></footer></section>
-    <ApiGuide :t="t" :locale="locale"/>
-    <section v-if="isOwner" class="settings-panel"><h2>{{ t('accounts') }}</h2><p>{{ t('accountsHelp') }}</p><div v-if="!accounts.length" class="accounts-empty"><Monitor/><span>{{ t('noAccounts') }}</span></div><div v-for="a in accounts" :key="a.id" class="account-row" :class="{off:!a.isEnabled}"><i class="status-dot" :class="{on:a.state==='Connected'}"></i><span class="account-name"><strong dir="auto">{{ a.label }}</strong><small dir="auto">{{ accountLine(a) }}</small></span><span class="grow"/><label class="account-cap">{{ t('dailyCap') }}<input type="number" min="0" max="500" :value="a.dailyCap" :aria-label="t('dailyCap')" :disabled="busy" @change="updateAccount(a,{dailyCap:Number($event.target.value)})"></label><div class="account-actions"><button :disabled="busy||a.busy" @click="connectAccount(a)"><RefreshCw/>{{ a.kind==='ApiKey'?t('checkKey'):a.state==='Connected'?t('reconnect'):t('connect') }}</button><button :disabled="busy" @click="checkAccount(a)">{{ t('refresh') }}</button><a v-if="a.kind!=='ApiKey'&&a.desktopUrl&&a.state!=='Disconnected'" class="button" :href="a.desktopUrl" target="_blank" rel="noopener noreferrer"><ExternalLink/>{{ t('openBrowser') }}</a><button :disabled="busy" @click="updateAccount(a,{isEnabled:!a.isEnabled})">{{ a.isEnabled?t('disable'):t('enable') }}</button><button v-if="a.kind!=='ApiKey'" :disabled="busy||a.busy" @click="accountAction('accountReset',a)">{{ t('reset') }}</button><button class="icon-button danger" :aria-label="t('accountDelete')" :disabled="busy||a.busy" @click="accountAction('accountDelete',a)"><Trash2/></button></div><p v-if="a.kind==='ApiKey'&&a.state==='Disconnected'" class="dev-note account-note"><KeyRound/><span>{{ t('apiAccountHelp') }}</span></p><p v-else-if="a.state==='VerificationRequired'" class="dev-note account-note"><ShieldCheck/><span>{{ t('verifyHelp') }}</span></p><p v-else-if="a.spentToday" class="dev-note account-note"><AlertTriangle/><span>{{ t('spentToday') }}</span></p></div><footer class="accounts-footer"><button class="primary" @click="newAccount"><Plus/>{{ t('addAccount') }}</button><span class="grow"/><small>{{ t('sessionPrivacy') }}</small></footer></section>
-    <section v-if="isOwner" class="settings-panel"><h2>{{ t('users') }}</h2><p>{{ t('usersHelp') }}</p><div v-if="!users.length" class="accounts-empty"><ShieldCheck/><span>{{ t('noUsers') }}</span></div><div v-for="u in users" :key="u.id" class="account-row" :class="{off:u.isDisabled}"><i class="status-dot" :class="{on:!u.isDisabled}"></i><span class="account-name"><strong dir="auto">{{ u.username }}</strong><small>{{ t(u.role) }} <span>·</span> {{ t('usedToday') }}: {{ u.usedToday.toLocaleString(locale) }} / {{ quotaLabel(u) }} <span>·</span> {{ t('credits') }}: {{ u.credits.toLocaleString(locale) }}</small></span><span class="grow"/><label v-if="u.dailyQuota<=100000" class="account-cap">{{ t('dailyQuota') }}<input type="number" min="0" max="10000" :value="u.dailyQuota" :aria-label="t('dailyQuota')" :disabled="busy" @change="updateUser(u,{dailyQuota:Number($event.target.value)})"></label><div class="account-actions"><button :disabled="busy||u.id===me?.id" @click="updateUser(u,{role:u.role==='Owner'?'Member':'Owner'})">{{ u.role==='Owner'?t('makeMember'):t('makeOwner') }}</button><button :disabled="busy||u.id===me?.id" @click="updateUser(u,{isDisabled:!u.isDisabled})">{{ u.isDisabled?t('enable'):t('disable') }}</button><button :disabled="busy||u.role==='Owner'" @click="grantTo(u)"><Layers/>{{ t('addCredits') }}</button><button :disabled="busy" @click="showUserTokens(u)"><KeyRound/>{{ t('userTokens') }}</button><button :disabled="busy" @click="userAction('userPassword',u)"><LockKeyhole/>{{ t('resetPassword') }}</button><button class="icon-button danger" :aria-label="t('userDelete')" :disabled="busy||u.id===me?.id" @click="userAction('userDelete',u)"><Trash2/></button></div></div><footer class="accounts-footer"><button class="primary" @click="newUser"><Plus/>{{ t('addUser') }}</button><span class="grow"/><small>{{ t('usersPrivacy') }}</small></footer></section>
-    <section v-if="isOwner" class="settings-panel"><h2>{{ t('pricing') }}</h2><p>{{ t('pricingHelp') }}</p><div v-for="p in PROVIDERS" :key="p" class="account-row"><span class="account-name"><strong>{{ p }}</strong><small>{{ t('pricingRow') }}</small></span><span class="grow"/><label v-for="o in OPERATIONS" :key="o" class="account-cap">{{ o?t(o):t('defaultPrice') }}<input type="number" min="0" max="10000" :value="prices[p+'|'+o]??''" :aria-label="(o?t(o):t('defaultPrice'))+' '+p" :disabled="busy" @change="prices[p+'|'+o]=$event.target.value"></label></div><footer class="accounts-footer"><button class="primary" :disabled="busy" @click="savePricing">{{ t('savePricing') }}</button><span class="grow"/><small>{{ t('pricingBlank') }}</small></footer></section></div>
-  </main>
+   <GalleryView v-else-if="view==='gallery'"/>
+   <AccountView v-else-if="view==='account'"/>
+   <AdminView v-else-if="view==='admin' && isOwner"/>
+  </div>
+  <div v-if="error" class="toast" role="alert"><AlertTriangle/><span>{{ t(error) }}</span><button class="btn btn-ghost btn-icon btn-sm" :aria-label="t('shDismiss')" @click="dismiss"><X/></button></div>
  </div>
- <Modal v-if="modal" :title="t(modal==='new'?'newProject':modal==='branch'?'chatBranchTitle':modal==='delete'?'delete':modal==='credits'?'addCredits':modal==='preview'?'preview':modal==='connection'?'connection':modal)" :close-label="t('close')" @close="modal=null">
-  <form v-if="modal==='new'" @submit.prevent="createProject"><p>{{ t('chatStartHelp') }}</p><label for="first-message">{{ t('chatFirstMessage') }}</label><textarea id="first-message" v-model="firstMessage" :placeholder="t('prompt')" maxlength="12000" rows="4"></textarea><label for="project-title">{{ t('chatTitleOptional') }}</label><input id="project-title" v-model="title" maxlength="160"><p class="field-hint">{{ t('chatTitleHint') }}</p><template v-if="choices.length>1&&firstMessage.trim()"><label for="first-provider">{{ t('provider') }}</label><select id="first-provider" v-model="provider"><option v-for="p in choices" :key="p" :value="p">{{ p }}</option></select></template><footer class="modal-actions"><button type="button" @click="modal=null">{{ t('cancel') }}</button><button class="primary" :disabled="busy||(firstMessage.trim()?!ready||quota?.dailyRemaining===0:!title.trim())">{{ busy?t('processing'):t(firstMessage.trim()?'chatStart':'create') }}</button></footer></form>
-  <div v-else-if="modal==='cancelAll'"><p>{{ t('cancelAllConfirm') }}</p><p v-if="isOwner" class="dev-note"><ShieldCheck/><span>{{ t('cancelAllOwner') }}</span></p><footer class="modal-actions"><button @click="modal=null">{{ t('cancel') }}</button><button class="danger" :disabled="busy" @click="cancelAll">{{ t('confirm') }}</button></footer></div>
-  <div v-else-if="modal==='connection'"><div class="connection-status"><Monitor/><span><strong>{{ t(ready?'Connected':'Disconnected') }}</strong><small>{{ ready?t('connectedHint'):t('connectionHelp') }}</small></span><i class="status-dot" :class="{on:ready}"></i></div><ul class="provider-list"><li v-for="p in connected.providers" :key="p.provider"><span>{{ p.provider }}</span><span class="count">{{ p.connected }} / {{ p.accounts }}</span></li></ul><p v-if="connected.stalled" class="dev-note"><AlertTriangle/><span>{{ t(connected.stalled) }}</span></p><a v-if="connected.desktopUrl&&browserOpen" class="button full" :href="connected.desktopUrl" target="_blank" rel="noopener noreferrer"><ExternalLink/>{{ t('openBrowser') }}</a><p v-else-if="connected.desktopUrl&&!browserAccounts" class="dev-note"><Monitor/><span>{{ t('desktopNoAccount') }}</span></p><p v-else-if="connected.desktopUrl" class="dev-note"><Monitor/><span>{{ t('desktopNotStarted') }}</span></p><p v-else-if="connected.providers.length" class="dev-note"><Monitor/><span>{{ t('desktopWindow') }}</span></p><p class="privacy-note"><ShieldCheck/>{{ t('sessionPrivacy') }}</p><footer class="modal-actions"><button v-if="isOwner" class="primary" @click="modal=null;navigate('settings')"><Monitor/>{{ t('manageAccounts') }}</button><button :disabled="busy" @click="action(refresh)"><RefreshCw/>{{ t('refresh') }}</button></footer></div>
-  <form v-else-if="modal==='edit'||modal==='branch'" @submit.prevent="submitOperation"><div class="parent-preview"><img :src="selected.imageUrl" :alt="selected.prompt"><p dir="auto">{{ selected.prompt }}</p></div><p>{{ t(modal==='edit'?'chatEditOlderHelp':'chatBranchHelp') }}</p><label for="edit-prompt">{{ t('editPrompt') }}</label><textarea id="edit-prompt" v-model="editPrompt" required maxlength="12000" rows="4"></textarea><p v-if="modal==='edit'&&waiting" class="dev-note"><LoaderCircle class="spin"/><span>{{ t('chatWaiting') }}</span></p><footer class="modal-actions"><button type="button" @click="modal=null">{{ t('cancel') }}</button><button class="primary" :disabled="busy||!editPrompt.trim()||!ready||(modal==='edit'&&waiting)">{{ t(modal==='edit'?'edit':'chatStart') }}</button></footer></form>
-  <div v-else-if="modal==='delete'"><p>{{ t('deleteConfirm') }}</p><footer class="modal-actions"><button @click="modal=null">{{ t('cancel') }}</button><button class="danger" :disabled="busy" @click="deleteProject">{{ t('confirm') }}</button></footer></div>
-  <div v-else-if="modal==='preview'"><img class="preview-full" :src="selected.imageUrl" :alt="selected.prompt||selected.templateTitle||''"><p dir="auto">{{ selected.prompt||selected.templateTitle }}</p><a class="button" :href="selected.imageUrl" :download="`loomi-${selected.id}`"><Download/>{{ t('download') }}</a></div>
-  <form v-else-if="modal==='account'" @submit.prevent="createAccount"><p>{{ t('accountHelp') }}</p><label for="account-label">{{ t('accountLabel') }}</label><input id="account-label" v-model="accountLabel" required maxlength="64"><label for="account-provider">{{ t('accountProvider') }}</label><select id="account-provider" v-model="accountProvider"><option v-for="p in PROVIDERS" :key="p" :value="p">{{ p }}</option></select><template v-if="accountProvider==='Gemini'"><label for="account-key">{{ t('apiKey') }}</label><input id="account-key" v-model="accountKey" dir="ltr" type="password" autocomplete="off" required maxlength="400"><p class="dev-note"><ShieldCheck/><span>{{ t('apiKeyHelp') }}</span></p></template><p v-else class="dev-note"><Monitor/><span>{{ t('browserAccountHelp') }}</span></p><footer class="modal-actions"><button type="button" @click="modal=null">{{ t('cancel') }}</button><button class="primary" :disabled="busy||!accountLabel.trim()||(accountProvider==='Gemini'&&!accountKey.trim())">{{ busy?t('processing'):t('create') }}</button></footer></form>
-  <div v-else-if="modal==='accountReset'||modal==='accountDelete'"><p dir="auto"><strong>{{ accountTarget?.label }}</strong></p><p>{{ t(modal==='accountReset'?'resetAccountConfirm':'deleteAccountConfirm') }}</p><footer class="modal-actions"><button @click="modal=null">{{ t('cancel') }}</button><button class="danger" :disabled="busy" @click="modal==='accountReset'?resetAccount():deleteAccount()">{{ t('confirm') }}</button></footer></div>
-  <form v-else-if="modal==='credits'" @submit.prevent="grantCredits"><p>{{ t('creditsHelp') }}</p><label for="credit-amount">{{ t('amount') }}</label><input id="credit-amount" v-model="creditAmount" type="number" required><label for="credit-note">{{ t('note') }}</label><input id="credit-note" v-model="creditNote" maxlength="400"><footer class="modal-actions"><button type="button" @click="modal=null">{{ t('cancel') }}</button><button class="primary" :disabled="busy||!Number(creditAmount)">{{ busy?t('processing'):t('confirm') }}</button></footer></form>
-  <form v-else-if="modal==='user'" @submit.prevent="createUser"><p>{{ t('userHelp') }}</p><label for="user-name">{{ t('username') }}</label><input id="user-name" v-model="userName" dir="ltr" autocomplete="off" required minlength="3" maxlength="64"><label for="user-password">{{ t('password') }}</label><input id="user-password" v-model="userPassword" dir="ltr" type="password" autocomplete="new-password" required minlength="8" maxlength="512"><label for="user-quota">{{ t('dailyQuota') }}</label><input id="user-quota" v-model="userQuota" type="number" min="0" max="10000" required><label for="user-credits">{{ t('credits') }}</label><input id="user-credits" v-model="userCredits" type="number" min="0" max="1000000" required><footer class="modal-actions"><button type="button" @click="modal=null">{{ t('cancel') }}</button><button class="primary" :disabled="busy||!userName.trim()||userPassword.length<8">{{ busy?t('processing'):t('addUser') }}</button></footer></form>
-  <form v-else-if="modal==='userPassword'" @submit.prevent="resetUserPassword"><p dir="auto"><strong>{{ userTarget?.username }}</strong></p><p>{{ t('resetPasswordHelp') }}</p><label for="new-password">{{ t('newPassword') }}</label><input id="new-password" v-model="userPassword" dir="ltr" type="password" autocomplete="new-password" required minlength="8" maxlength="512"><footer class="modal-actions"><button type="button" @click="modal=null">{{ t('cancel') }}</button><button class="primary" :disabled="busy||userPassword.length<8">{{ busy?t('processing'):t('confirm') }}</button></footer></form>
-  <div v-else-if="modal==='userDelete'"><p dir="auto"><strong>{{ userTarget?.username }}</strong></p><p>{{ t('deleteUserConfirm') }}</p><footer class="modal-actions"><button @click="modal=null">{{ t('cancel') }}</button><button class="danger" :disabled="busy" @click="deleteUser">{{ t('confirm') }}</button></footer></div>
-  <form v-else-if="modal==='newToken'" @submit.prevent="createToken"><p>{{ t('tokenHelp') }}</p><label for="token-name">{{ t('tokenName') }}</label><input id="token-name" v-model="tokenName" required maxlength="64"><footer class="modal-actions"><button type="button" @click="modal=null">{{ t('cancel') }}</button><button class="primary" :disabled="busy||!tokenName.trim()">{{ busy?t('processing'):t('newToken') }}</button></footer></form>
-  <div v-else-if="modal==='tokenCreated'"><p>{{ t('tokenOnce') }}</p><code class="token-secret" dir="ltr">{{ mintedToken }}</code><p class="privacy-note"><ShieldCheck/><span>{{ t('apiUsage') }} <code dir="ltr">Authorization: Bearer …</code></span></p><footer class="modal-actions"><button @click="copyToken"><Copy/>{{ copied?t('copied'):t('copy') }}</button><button class="primary" @click="modal=null;mintedToken=''">{{ t('close') }}</button></footer></div>
-  <div v-else-if="modal==='tokenRevoke'"><p dir="auto"><strong>{{ tokenTarget?.name }}</strong></p><p>{{ t('revokeTokenConfirm') }}</p><footer class="modal-actions"><button @click="modal=null">{{ t('cancel') }}</button><button class="danger" :disabled="busy" @click="revokeToken">{{ t('confirm') }}</button></footer></div>
-  <div v-else-if="modal==='userTokens'"><p dir="auto"><strong>{{ userTarget?.username }}</strong></p><p>{{ t('userTokensHelp') }}</p><div v-if="!userTokens.length" class="accounts-empty"><KeyRound/><span>{{ t('noTokens') }}</span></div><div v-for="k in userTokens" :key="k.id" class="account-row"><span class="account-name"><strong dir="auto">{{ k.name }}</strong><small><code dir="ltr">lm_{{ k.prefix }}_…</code> <span>·</span> {{ t('lastUsed') }}: {{ k.lastUsedAt?new Date(k.lastUsedAt).toLocaleString(locale):t('never') }}</small></span><span class="grow"/><button class="danger" :disabled="busy" @click="revokeUserToken(k)">{{ t('revoke') }}</button></div></div>
-  <p v-if="error" role="alert" class="error-text">{{ t(error) }}</p>
- </Modal>
 </template>
+
+<style scoped>
+.shell{display:grid;grid-template-columns:272px minmax(0,1fr);min-height:100vh}
+.stage{min-width:0;display:flex;flex-direction:column}
+.service{display:flex;align-items:center;gap:10px;margin:16px 32px 0;padding:10px 14px;border-radius:var(--r2);background:var(--warn-soft);font-size:13.5px}
+.service svg{color:var(--warn)}
+.service span{flex:1}
+.toast{position:fixed;z-index:60;bottom:24px;inset-inline-start:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;max-width:min(560px,calc(100vw - 32px));padding:10px 10px 10px 16px;border-radius:var(--r);background:var(--s1);border:1px solid color-mix(in srgb,var(--bad) 45%,var(--line));box-shadow:var(--shadow);font-size:13.5px}
+:root[dir=rtl] .toast{transform:translateX(50%);padding:10px 16px 10px 10px}
+.toast>svg{color:var(--bad)}
+.toast span{flex:1}
+@media (max-width:860px){
+ .shell{display:block}
+ .shell :deep(.side){display:none}
+ .service{margin:12px 16px 0}
+ .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+ .in-chat .toast{bottom:calc(120px + env(safe-area-inset-bottom,0px))}
+}
+</style>

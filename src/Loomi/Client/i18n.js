@@ -10,4 +10,7 @@ export const messages = {
 import chatStrings from './i18n-chat.js';
 import apiStrings from './i18n-api.js';
 import usageStrings from './i18n-usage.js';
-for (const extra of [chatStrings, apiStrings, usageStrings]) for (const lang of Object.keys(extra)) Object.assign(messages[lang], extra[lang]);
+import shellStrings from './i18n-shell.js';
+import studioStrings from './i18n-studio.js';
+import adminStrings from './i18n-admin.js';
+for (const extra of [chatStrings, apiStrings, usageStrings, shellStrings, studioStrings, adminStrings]) for (const lang of Object.keys(extra)) Object.assign(messages[lang], extra[lang]);
