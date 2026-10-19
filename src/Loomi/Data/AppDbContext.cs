@@ -19,6 +19,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<PromptTemplate> Templates => Set<PromptTemplate>();
     public DbSet<AppSetting> Settings => Set<AppSetting>();
     public DbSet<BotRequest> BotRequests => Set<BotRequest>();
+    public DbSet<CreditPackage> CreditPackages => Set<CreditPackage>();
     // No global query filter on UserId: the dispatcher runs without a user and would silently read an empty database.
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -73,5 +74,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<AppSetting>().HasKey(x => x.Key);
         b.Entity<AppSetting>().Property(x => x.Key).HasMaxLength(64);
         b.Entity<AppSetting>().Property(x => x.Value).HasMaxLength(4000);
+        // No foreign keys, like CreditEntry.GenerationId: a ledger row and a request's history both outlive the package they name.
+        b.Entity<CreditPackage>().Property(x => x.Name).HasMaxLength(80);
+        b.Entity<CreditPackage>().Property(x => x.Note).HasMaxLength(400);
+        b.Entity<CreditPackage>().HasIndex(x => new { x.UserId, x.EndsAt });
     }
 }

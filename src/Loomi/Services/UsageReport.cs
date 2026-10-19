@@ -1,3 +1,4 @@
+using System.Globalization;
 using Loomi.Data;
 using Loomi.Models;
 using Microsoft.EntityFrameworkCore;
@@ -11,9 +12,11 @@ public record UserUsage(Guid UserId, string Username, UserRole Role, bool IsDisa
     IReadOnlyList<TemplateCount> Templates);
 /// <summary>Everybody's use over a period, busiest first, people who did nothing included. Since is the UTC instant the period starts, null for all time.</summary>
 public record UsageSummary(UsagePeriod Period, DateTime? Since, int ActiveUsers, int Requests, int Images, int Failed, int CreditsSpent, IReadOnlyList<UserUsage> Users);
-/// <summary>One request as the owner reads it in a person's history.</summary>
+/// <summary>One request as the owner reads it in a person's history. PackageName is the package that paid for it, of any kind.</summary>
 public record UsageItem(Guid Id, Guid ProjectId, string ProjectTitle, DateTime CreatedAt, string Prompt, Operation Operation, RunStatus Status, Channel Channel,
-    string? TemplateTitle, int CreditCost, bool HasImage, string? ReplyText, string? ErrorMessage);
+    string? TemplateTitle, int CreditCost, bool HasImage, string? ReplyText, string? ErrorMessage, string? PackageName);
+/// <summary>Everybody's requests on one local day, as yyyy-MM-dd: all of them, those that delivered a picture, and those that failed.</summary>
+public record DailyUsage(string Date, int Requests, int Images, int Failed);
 public class ReportOptions
 {
     /// <summary>The local hour from which the day's summary goes to the owner in Telegram.</summary>
@@ -25,6 +28,8 @@ public class UsageReport(AppDbContext db)
 {
     public const string DailyKey = "Reports.Daily", DailySentKey = "Reports.DailySentOn";
     public const int MaxPage = 50;
+    /// <summary>The longest run of days the daily figures cover: a quarter, which is as far back as a chart of single days stays readable.</summary>
+    public const int MaxDays = 90;
     private const int TopTemplates = 3;
     private sealed record Row(Guid UserId, RunStatus Status, Operation Operation, Channel Channel, string? TemplateTitle);
     /// <summary>Local midnight, so a period is whole days as the people using Loomi count them; the week and the month end with today.</summary>
@@ -61,8 +66,19 @@ public class UsageReport(AppDbContext db)
     public async Task<IReadOnlyList<UsageItem>> RequestsAsync(Guid user, int skip, int take, CancellationToken ct) =>
         (await db.Generations.AsNoTracking().Where(g => g.UserId == user).OrderByDescending(g => g.CreatedAt).Skip(Math.Max(0, skip)).Take(Math.Clamp(take, 1, MaxPage))
             .Select(g => new UsageItem(g.Id, g.ProjectId, g.Project.Title, g.CreatedAt, g.Prompt, g.Operation, g.Status, g.Channel, g.TemplateTitle, g.CreditCost,
-                g.LocalImagePath != null, g.ReplyText, g.ErrorMessage))
+                g.LocalImagePath != null, g.ReplyText, g.ErrorMessage, db.CreditPackages.Where(p => p.Id == g.PackageId).Select(p => p.Name).FirstOrDefault()))
             .ToListAsync(ct)).Select(i => i with { CreatedAt = Utc(i.CreatedAt) }).ToList();
+    /// <summary>The last <paramref name="days"/> local days ending today, oldest first, a quiet day included as zeros so a chart has no gaps. Each day
+    /// starts at its own local midnight, so a clock change would still give it its true length.</summary>
+    public async Task<IReadOnlyList<DailyUsage>> DailyAsync(int days, CancellationToken ct)
+    {
+        var first = DateTime.Today.AddDays(1 - days);
+        var since = first.ToUniversalTime();
+        var rows = await db.Generations.AsNoTracking().Where(g => g.CreatedAt >= since).Select(g => new { g.CreatedAt, g.Status }).ToListAsync(ct);
+        var byDay = rows.ToLookup(r => Utc(r.CreatedAt).ToLocalTime().Date);
+        return Enumerable.Range(0, days).Select(i => first.AddDays(i)).Select(day => new DailyUsage(day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), byDay[day].Count(),
+            byDay[day].Count(r => r.Status == RunStatus.Completed), byDay[day].Count(r => r.Status == RunStatus.Failed))).ToList();
+    }
     /// <summary>On unless the owner has switched it off.</summary>
     public async Task<bool> DailyEnabledAsync(CancellationToken ct) => await SettingAsync(DailyKey, ct) != "off";
     public Task SetDailyEnabledAsync(bool enabled, CancellationToken ct) => SetSettingAsync(DailyKey, enabled ? "on" : "off", ct);
@@ -82,7 +98,8 @@ public class UsageReport(AppDbContext db)
         // A charge and its refund cancel out, so what is left is what the person actually paid for; grants and adjustments are the owner's, not use.
         var spent = await db.CreditEntries.AsNoTracking().Where(c => ids.Contains(c.UserId) && (c.Kind == CreditKind.Charge || c.Kind == CreditKind.Refund) && (since == null || c.CreatedAt >= since))
             .GroupBy(c => c.UserId).Select(x => new { x.Key, Sum = x.Sum(c => c.Amount) }).ToDictionaryAsync(x => x.Key, x => -x.Sum, ct);
-        var balances = await db.CreditEntries.AsNoTracking().Where(c => ids.Contains(c.UserId)).GroupBy(c => c.UserId)
+        // Left is the regular balance; a package's own credits end with it. Spent above counts both, since either was spent on a request.
+        var balances = await db.CreditEntries.AsNoTracking().Where(c => ids.Contains(c.UserId) && c.PackageId == null).GroupBy(c => c.UserId)
             .Select(x => new { x.Key, Sum = x.Sum(c => c.Amount) }).ToDictionaryAsync(x => x.Key, x => x.Sum, ct);
         var last = await db.Generations.AsNoTracking().Where(g => ids.Contains(g.UserId)).GroupBy(g => g.UserId)
             .Select(x => new { x.Key, Last = x.Max(g => g.CreatedAt) }).ToDictionaryAsync(x => x.Key, x => x.Last, ct);

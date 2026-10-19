@@ -12,9 +12,10 @@ public record CreateUser(string? Username, string? Password, int? DailyQuota, in
 public record GrantCredits(int? Amount, string? Note);
 public record UpdateUser(int? DailyQuota, UserRole? Role, bool? IsDisabled);
 public record ResetPassword(string? Password);
-public record UserDto(Guid Id, string Username, UserRole Role, int DailyQuota, bool IsDisabled, DateTime CreatedAt, int UsedToday, int Credits)
+/// <summary>Credits is the regular balance; Packages are the ones running or waiting to start, soonest ending first.</summary>
+public record UserDto(Guid Id, string Username, UserRole Role, int DailyQuota, bool IsDisabled, DateTime CreatedAt, int UsedToday, int Credits, IReadOnlyList<PackageDto> Packages)
 {
-    public static UserDto From(AppUser u, int used, int credits = 0) => new(u.Id, u.Username, u.Role, u.DailyQuota, u.IsDisabled, u.CreatedAt, used, credits);
+    public static UserDto From(AppUser u, int used, int credits = 0, IReadOnlyList<PackageDto>? packages = null) => new(u.Id, u.Username, u.Role, u.DailyQuota, u.IsDisabled, u.CreatedAt, used, credits, packages ?? []);
 }
 [ApiController, Authorize(Roles = nameof(UserRole.Owner)), Route("api/users")]
 public class UsersController(AppDbContext db, PasswordService passwords, IImageStorage storage) : ControllerBase
@@ -26,15 +27,26 @@ public class UsersController(AppDbContext db, PasswordService passwords, IImageS
     private static bool ValidName(string name) => name.Length is >= 3 and <= 64 && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');
     private Task<Dictionary<Guid, int>> UsageAsync(CancellationToken ct) => db.UsageAsync(ct);
     private async Task<AppUser> UserAsync(Guid id, CancellationToken ct) => await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct) ?? throw new KeyNotFoundException();
+    /// <summary>Each person's packages that have not ended, in one read for the whole list. Not yet ended is running or waiting: an end in the past is over.</summary>
+    private async Task<ILookup<Guid, PackageDto>> PackagesAsync(Guid? user, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        var current = await db.CreditPackages.AsNoTracking().Where(p => (user == null || p.UserId == user) && p.EndsAt > now).ToListAsync(ct);
+        var ordered = current.OrderBy(p => p.EndsAt).ThenBy(p => p.CreatedAt).ToList();
+        var described = await db.DescribeAsync(ordered, now, withNote: true, ct);
+        return ordered.Zip(described).ToLookup(x => x.First.UserId, x => x.Second);
+    }
     /// <summary>True while somebody other than this user can still reach the owner-only routes.</summary>
     private Task<bool> AnotherOwnerAsync(Guid id, CancellationToken ct) => db.Users.AnyAsync(u => u.Id != id && u.Role == UserRole.Owner && !u.IsDisabled, ct);
 
     [HttpGet] public async Task<IActionResult> List(CancellationToken ct)
     {
         var usage = await UsageAsync(ct);
-        var balances = await db.CreditEntries.AsNoTracking().GroupBy(e => e.UserId).Select(x => new { x.Key, Total = x.Sum(e => e.Amount) }).ToDictionaryAsync(x => x.Key, x => x.Total, ct);
+        // The regular balance, as Credits.BalanceAsync reads it: a package's own credits are shown with the package.
+        var balances = await db.CreditEntries.AsNoTracking().Where(e => e.PackageId == null).GroupBy(e => e.UserId).Select(x => new { x.Key, Total = x.Sum(e => e.Amount) }).ToDictionaryAsync(x => x.Key, x => x.Total, ct);
+        var packages = await PackagesAsync(null, ct);
         var users = await db.Users.AsNoTracking().OrderBy(u => u.CreatedAt).ToListAsync(ct);
-        return Ok(users.Select(u => UserDto.From(u, usage.GetValueOrDefault(u.Id), balances.GetValueOrDefault(u.Id))));
+        return Ok(users.Select(u => UserDto.From(u, usage.GetValueOrDefault(u.Id), balances.GetValueOrDefault(u.Id), packages[u.Id].ToList())));
     }
     [HttpPost] public async Task<IActionResult> Create(CreateUser request, CancellationToken ct)
     {
@@ -66,7 +78,7 @@ public class UsersController(AppDbContext db, PasswordService passwords, IImageS
         if (request.DailyQuota is { } quota) user.DailyQuota = quota;
         user.Role = role; user.IsDisabled = disabled;
         await db.SaveChangesAsync(ct);
-        return Ok(UserDto.From(user, (await UsageAsync(ct)).GetValueOrDefault(id), await db.BalanceAsync(id, ct)));
+        return Ok(UserDto.From(user, (await UsageAsync(ct)).GetValueOrDefault(id), await db.BalanceAsync(id, ct), (await PackagesAsync(id, ct))[id].ToList()));
     }
     [HttpPost("{id:guid}/password")] public async Task<IActionResult> Password(Guid id, ResetPassword request, CancellationToken ct)
     {
@@ -117,6 +129,8 @@ public class UsersController(AppDbContext db, PasswordService passwords, IImageS
         // A Telegram link outliving its user would leave a chat that the next user of that id inherits; the unique index would also refuse a fresh link.
         await db.TelegramLinks.Where(l => l.UserId == id).ExecuteDeleteAsync(ct);
         await db.LinkCodes.Where(c => c.UserId == id).ExecuteDeleteAsync(ct);
+        // Packages have no foreign key either; one left behind would be a running package nobody can reach.
+        await db.CreditPackages.Where(p => p.UserId == id).ExecuteDeleteAsync(ct);
         db.Users.Remove(user); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
         foreach (var project in projects) storage.DeleteProject(project);
         return NoContent();

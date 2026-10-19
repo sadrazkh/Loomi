@@ -129,7 +129,7 @@ public class UsageBot(ITelegramClient client, UsageReport report, AppDbContext d
     private static string Said(string prompt, string? template) => (string.IsNullOrWhiteSpace(prompt) ? template ?? "" : prompt).ReplaceLineEndings(" ").Trim();
     /// <summary>Stored in UTC, read back by SQLite with no kind at all; shown on the server's clock, which is the owner's.</summary>
     private static DateTime Local(DateTime utc) => DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToLocalTime();
-    private static string When(DateTime utc, string format, bool persian) =>
+    internal static string When(DateTime utc, string format, bool persian) =>
         BotMessages.Digits(Local(utc).ToString(format, persian ? PersianCulture : CultureInfo.InvariantCulture), persian);
     /// <summary>Never through the middle of a surrogate pair, which Telegram would refuse as malformed text.</summary>
     private static string Cut(string text, int max)

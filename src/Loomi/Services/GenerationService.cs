@@ -106,13 +106,9 @@ public class GenerationService(AppDbContext db, IOptions<BrowserOptions> browser
         // and work whose user no longer exists has no balance to spend — the same reasoning the daily quota uses.
         if (await db.Users.AsNoTracking().Where(u => u.Id == project.UserId).Select(u => (UserRole?)u.Role).FirstOrDefaultAsync(ct) == UserRole.Member)
         {
+            // A free request consumes nothing, not even a package's daily slot.
             var price = await db.PriceAsync(provider, operation, ct);
-            if (price > 0)
-            {
-                if (await db.BalanceAsync(project.UserId, ct) < price) throw new InvalidOperationException("InsufficientCredits");
-                generation.CreditCost = price;
-                db.CreditEntries.Add(new CreditEntry { UserId = project.UserId, Amount = -price, Kind = CreditKind.Charge, GenerationId = generation.Id });
-            }
+            if (price > 0) await db.ChargeAsync(generation, price, ct);
         }
         db.Generations.Add(generation);
         project.UpdatedAt = DateTime.UtcNow; project.Status = "Queued";

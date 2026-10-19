@@ -223,9 +223,24 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
     {
         var used = await db.UsedByAsync(user.Id, ct);
         // The owner is not charged, so a balance for them would be a number with nothing behind it — the same reason the web hides it.
-        await client.SendTextAsync(chat, user.Role == UserRole.Owner
-            ? BotMessages.Text("balanceOwner", persian, used)
-            : BotMessages.Text("balance", persian, await db.BalanceAsync(user.Id, ct), used), ct);
+        if (user.Role == UserRole.Owner) { await client.SendTextAsync(chat, BotMessages.Text("balanceOwner", persian, used), ct); return; }
+        var now = DateTime.UtcNow;
+        var running = await db.CreditPackages.AsNoTracking().Where(p => p.UserId == user.Id).ActiveAt(now).ToListAsync(ct);
+        var packages = await db.DescribeAsync(running.OrderBy(p => p.EndsAt).ThenBy(p => p.CreatedAt).ToList(), now, withNote: false, ct);
+        var balance = BotMessages.Text("balance", persian, await db.BalanceAsync(user.Id, ct), used);
+        await client.SendTextAsync(chat, string.Join("\n", packages.Select(p => PackageLine(p, now, persian)).Prepend(balance)), ct);
+    }
+    /// <summary>A running package as one line: how long it has left and what is left of it today, or of its credits.</summary>
+    private static string PackageLine(PackageDto p, DateTime now, bool persian)
+    {
+        string N(long n) => BotMessages.Number(n, persian);
+        var left = p.Kind switch
+        {
+            PackageKind.Credits => BotMessages.Text("balancePackageCredits", persian, N(p.Remaining ?? 0)),
+            PackageKind.Unlimited when p.Amount == 0 => BotMessages.Text("balancePackageUnlimited", persian, N(p.UsedToday)),
+            _ => BotMessages.Text("balancePackageToday", persian, N(p.UsedToday), N(p.Amount)),
+        };
+        return BotMessages.Text("balancePackage", persian, p.Name, PackageReminderWorker.Days(PackageReminderWorker.DaysLeft(p.EndsAt, now), persian), PackageReminderWorker.Date(p.EndsAt, persian), left);
     }
     private async Task StatusAsync(AppDbContext db, long chat, AppUser user, bool persian, CancellationToken ct)
     {

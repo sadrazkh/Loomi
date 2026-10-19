@@ -162,6 +162,9 @@ namespace Loomi.Data.Migrations
                         .HasMaxLength(400)
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("PackageId")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("TEXT");
 
@@ -174,6 +177,58 @@ namespace Loomi.Data.Migrations
                     b.HasIndex("UserId", "CreatedAt");
 
                     b.ToTable("CreditEntries");
+                });
+
+            modelBuilder.Entity("Loomi.Models.CreditPackage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Amount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("ByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("EndNoticeSentAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("EndedEarlyAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("EndsAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(400)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ReminderSentAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("StartsAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "EndsAt");
+
+                    b.ToTable("CreditPackages");
                 });
 
             modelBuilder.Entity("Loomi.Models.Generation", b =>
@@ -209,6 +264,9 @@ namespace Loomi.Data.Migrations
 
                     b.Property<int>("Operation")
                         .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("PackageId")
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid?>("ParentGenerationId")
                         .HasColumnType("TEXT");
