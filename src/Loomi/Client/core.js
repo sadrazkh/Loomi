@@ -115,7 +115,8 @@ export async function boot() {
 
 // ---- Where the person is: kept in the address so the back button, a reload and a shared link all land on the same page ----
 // Pages: home, chat (with an id), chats (the phone's list), templates, gallery, account, admin (with a section).
-export const view = ref('home'), section = ref('overview');
+// 'loading' until the address has been read, so a reload into a chat does not show home first.
+export const view = ref('loading'), section = ref('overview');
 export const ADMIN_SECTIONS = ['overview', 'users', 'accounts', 'templates', 'pricing', 'bot'];
 /** Moves to a page by changing the address; the hashchange listener does the rest, so every way of getting there behaves the same. */
 export function go(page, arg) {
@@ -124,7 +125,8 @@ export function go(page, arg) {
 }
 export function route() {
   const [page = 'home', arg] = location.hash.replace(/^#\/?/, '').split('/');
-  if (page === 'chat' && arg) { if (current.value?.id !== arg) openChat(arg); else view.value = 'chat'; return; }
+  // While another chat loads nothing shows, rather than the page that was there before or home flashing past on a reload.
+  if (page === 'chat' && arg) { if (current.value?.id !== arg) { view.value = 'loading'; openChat(arg); } else view.value = 'chat'; return; }
   if (page === 'admin') { if (!isOwner.value && me.value) { go('home'); return; } section.value = ADMIN_SECTIONS.includes(arg) ? arg : 'overview'; view.value = 'admin'; window.scrollTo(0, 0); return; }
   view.value = ['home', 'chats', 'templates', 'gallery', 'account'].includes(page) ? page : 'home';
   if (view.value !== 'chat') { current.value = null; generations.value = []; }
