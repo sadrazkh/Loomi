@@ -18,6 +18,7 @@ public class MeController(AppDbContext db, IOptions<BrowserOptions> browser) : A
         // Zero is no daily ceiling at all, the reading Quota.RemainingAsync gives it.
         int? quota = user.DailyQuota > 0 ? user.DailyQuota : null;
         return Ok(new MeDto(user.Id, user.Username, user.Role.ToString().ToLowerInvariant(), user.Role == UserRole.Member ? await db.BalanceAsync(user.Id, ct) : null,
-                            quota, used, quota is { } q ? Math.Max(0, q - used) : null, new Limits(browser.Value.MaxInputs, UploadsController.MaxFileBytes, MaxPromptLength)));
+                            quota, used, quota is { } q ? Math.Max(0, q - used) : null, new Limits(browser.Value.MaxInputs, UploadsController.MaxFileBytes, MaxPromptLength),
+                            await db.MineAsync(user.Id, DateTime.UtcNow, ct)));
     }
 }

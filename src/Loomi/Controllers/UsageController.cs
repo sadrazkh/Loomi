@@ -1,3 +1,4 @@
+using System.Globalization;
 using Loomi.Models;
 using Loomi.Services;
 using Loomi.Telegram;
@@ -16,6 +17,13 @@ public class UsageController(UsageReport report, BotSettings bot, IOptions<Repor
         UsageReport.TryParse(period, out var p) ? Ok(await report.SummaryAsync(p, ct)) : InvalidPeriod();
     [HttpGet("users/{id:guid}")] public async Task<IActionResult> Person(Guid id, string? period, CancellationToken ct) =>
         !UsageReport.TryParse(period, out var p) ? InvalidPeriod() : await report.UserAsync(id, p, ct) is { } usage ? Ok(usage) : NotFound();
+    /// <summary>Read as text, so a days= that is not a number is InvalidPeriod like any other bad period rather than a ProblemDetails.</summary>
+    [HttpGet("daily")] public async Task<IActionResult> PerDay(string? days, CancellationToken ct)
+    {
+        var count = 14;
+        if (days != null && (!int.TryParse(days, NumberStyles.None, CultureInfo.InvariantCulture, out count) || count is < 1 or > UsageReport.MaxDays)) return InvalidPeriod();
+        return Ok(await report.DailyAsync(count, ct));
+    }
     [HttpGet("users/{id:guid}/requests")] public async Task<IActionResult> Requests(Guid id, int skip = 0, int take = 20, CancellationToken ct = default) =>
         Ok(await report.RequestsAsync(id, skip, take, ct));
     /// <summary>Telegram says whether a bot is set up at all: without one the switch has nothing to send through.</summary>

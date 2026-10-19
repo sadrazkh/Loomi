@@ -51,8 +51,9 @@ public record WaitResult(bool Done, MessageDto Message);
 public record TemplateDto(Guid Id, string Title, string Category, string? Instructions, int MinImages, int MaxImages, string? SampleUrl, int? Price);
 public record TemplateList(List<TemplateDto> Templates);
 public record Limits(int MaxImages, long MaxImageBytes, int MaxPromptLength);
-/// <summary>Credits is null for the owner, who is never charged; DailyQuota and DailyRemaining are null when there is no daily ceiling.</summary>
-public record MeDto(Guid Id, string Username, string Role, int? Credits, int? DailyQuota, int DailyUsed, int? DailyRemaining, Limits Limits);
+/// <summary>Credits is null for the owner, who is never charged; DailyQuota and DailyRemaining are null when there is no daily ceiling. Packages are the
+/// caller's timed packages: running ones first, then those waiting to start, then those that ended in the last thirty days.</summary>
+public record MeDto(Guid Id, string Username, string Role, int? Credits, int? DailyQuota, int DailyUsed, int? DailyRemaining, Limits Limits, IReadOnlyList<PackageDto> Packages);
 public record ErrorDto(string Error);
 
 internal static class Wire

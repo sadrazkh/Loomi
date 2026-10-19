@@ -6,7 +6,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 namespace Loomi.Controllers;
-public record CreditEntryDto(Guid Id, int Amount, CreditKind Kind, Guid? GenerationId, string? Note, DateTime CreatedAt);
+/// <summary>PackageId and PackageName are set on a charge or refund made against a Credits package, which is not the regular balance's money.</summary>
+public record CreditEntryDto(Guid Id, int Amount, CreditKind Kind, Guid? GenerationId, string? Note, DateTime CreatedAt, Guid? PackageId, string? PackageName);
 [ApiController, Authorize, Route("api/credits")]
 public class CreditsController(AppDbContext db) : ControllerBase
 {
@@ -18,5 +19,6 @@ public class CreditsController(AppDbContext db) : ControllerBase
     }
     internal static async Task<List<CreditEntryDto>> LedgerAsync(AppDbContext db, Guid user, CancellationToken ct) =>
         await db.CreditEntries.AsNoTracking().Where(e => e.UserId == user).OrderByDescending(e => e.CreatedAt).Take(50)
-            .Select(e => new CreditEntryDto(e.Id, e.Amount, e.Kind, e.GenerationId, e.Note, e.CreatedAt)).ToListAsync(ct);
+            .Select(e => new CreditEntryDto(e.Id, e.Amount, e.Kind, e.GenerationId, e.Note, e.CreatedAt, e.PackageId, db.CreditPackages.Where(p => p.Id == e.PackageId).Select(p => p.Name).FirstOrDefault()))
+            .ToListAsync(ct);
 }

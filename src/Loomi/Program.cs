@@ -84,6 +84,7 @@ builder.Services.AddSingleton<ITelegramClient, TelegramClient>();
 builder.Services.AddHostedService<TelegramBotWorker>();
 builder.Services.AddHostedService<OwnerAlertWorker>();
 builder.Services.AddHostedService<DailyReportWorker>();
+builder.Services.AddHostedService<PackageReminderWorker>();
 builder.Services.AddSingleton(sp => new InstanceLease(Path.Combine(root, "instance.lease"), Environment.MachineName, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(20), sp.GetRequiredService<ILogger<InstanceLease>>()));
 builder.Services.AddSingleton<BrowserPool>();
 builder.Services.AddSingleton<AccountHealth>();
