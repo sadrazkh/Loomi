@@ -14,6 +14,9 @@ public enum Provider { ChatGPT, Gemini }
 public enum AccountKind { Browser, ApiKey }
 /// <summary>Why a credit row exists. Grant/Adjust are the owner's doing; Charge/Refund follow a generation.</summary>
 public enum CreditKind { Grant, Charge, Refund, Adjust }
+/// <summary>What a timed package gives: credits to spend before it ends, free use with an optional daily cap, or a number of free images each day.
+/// Stored as an int, so new members are only ever appended.</summary>
+public enum PackageKind { Credits, Unlimited, Daily }
 /// <summary>A person who signs in to Loomi. Distinct from the provider accounts their work runs on.</summary>
 public class AppUser
 {
@@ -89,6 +92,8 @@ public class Generation
     /// <summary>The template's prompt, sent ahead of <see cref="Prompt"/> and never shown: Prompt stays what the person wrote themselves, which is all
     /// that reaches their history, the live updates and the bot.</summary>
     public string? HiddenPrompt { get; set; }
+    /// <summary>The package that paid for this request, of any kind. It is how a package's use today is counted, and what the owner's report names.</summary>
+    public Guid? PackageId { get; set; }
 }
 /// <summary>A heading templates are grouped under, in the order the owner chose.</summary>
 public class TemplateCategory
@@ -165,6 +170,30 @@ public class CreditEntry
     public Guid? ByUserId { get; set; }
     public string? Note { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>Set on a charge or refund made against a Credits package. Such a row is that package's money, never the regular balance's.</summary>
+    public Guid? PackageId { get; set; }
+}
+/// <summary>A timed package the owner hands one member, paid for outside the app. It counts only while StartsAt &lt;= now &lt; EndsAt; what a Credits
+/// package has left when it ends is gone, and a day's free images do not carry over. Kept after it ends, so the history still says what paid.</summary>
+public class CreditPackage
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid UserId { get; set; }
+    public PackageKind Kind { get; set; }
+    public string Name { get; set; } = "";
+    /// <summary>Credits for a Credits package; the daily cap of an Unlimited one, zero meaning none; the free images per day of a Daily one.</summary>
+    public int Amount { get; set; }
+    public DateTime StartsAt { get; set; }
+    public DateTime EndsAt { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public Guid? ByUserId { get; set; }
+    /// <summary>The owner's own words about it, such as what was paid. Only the owner ever reads it.</summary>
+    public string? Note { get; set; }
+    /// <summary>Set when the owner stopped it by hand, so the end notice, meant for a package that simply ran out, is not sent for it.</summary>
+    public DateTime? EndedEarlyAt { get; set; }
+    /// <summary>Stamped once the ending-soon reminder was handled, even with no chat to send it to, so it is never tried again.</summary>
+    public DateTime? ReminderSentAt { get; set; }
+    public DateTime? EndNoticeSentAt { get; set; }
 }
 /// <summary>What one generation costs. Operation null is the provider's default; a specific operation overrides it.</summary>
 public class PricingRule
