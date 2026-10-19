@@ -9,10 +9,12 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0-noble AS build
 WORKDIR /source
 COPY NuGet.Config ./
 COPY src/Loomi/Loomi.csproj src/Loomi/
-RUN dotnet restore src/Loomi/Loomi.csproj --configfile NuGet.Config
+# For linux-x64 alone, as the Playwright driver below already assumes: a portable publish carries SkiaSharp's library for every platform,
+# Windows debug symbols included, some 440 MB the container never loads.
+RUN dotnet restore src/Loomi/Loomi.csproj --configfile NuGet.Config -r linux-x64
 COPY src/Loomi/ src/Loomi/
 COPY --from=client /wwwroot/dist/ src/Loomi/wwwroot/dist/
-RUN dotnet publish src/Loomi/Loomi.csproj -c Release -o /app --no-restore
+RUN dotnet publish src/Loomi/Loomi.csproj -c Release -r linux-x64 --self-contained false -o /app --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble AS runtime
 # Bumping the revision rebuilds the runtime stage from scratch. On Harbora that is the way past a cached layer the server can no longer restore:
