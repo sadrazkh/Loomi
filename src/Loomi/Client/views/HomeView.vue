@@ -4,6 +4,7 @@ import { MessagesSquare, ChevronLeft, PenLine, Hourglass, Repeat } from 'lucide-
 import Composer from '../components/Composer.vue';
 import { flatten, photoMeta } from '../components/templates.js';
 import { counted } from '../components/studio/shared.js';
+import { sized, THUMB, CARD } from '../images.js';
 import { t, tf, me, statusKnown, projects, api, startChat, ago, when, go } from '../core';
 // The landing page has one job, starting an image: the box to describe it in, a few templates a click away, and the chats to carry on with.
 const composer = ref(null), templates = ref([]);
@@ -28,7 +29,7 @@ onMounted(async () => { try { templates.value = flatten(await api('/api/template
    <div class="bh"><h2 id="home-templates">{{ t('stStartTemplate') }}</h2><button type="button" class="more" @click="go('templates')">{{ t('stAllTemplates') }}<ChevronLeft class="dir"/></button></div>
    <div class="tpls">
     <button v-for="tpl in templates" :key="tpl.id" type="button" class="tpl" @click="go('templates', tpl.id)">
-     <span class="cover"><img :src="tpl.sampleUrl" alt="" loading="lazy"></span>
+     <span class="cover"><img :src="sized(tpl.sampleUrl, CARD)" alt="" loading="lazy"></span>
      <b dir="auto">{{ tpl.title }}</b>
      <small><bdi>{{ tpl.category }}</bdi>{{ t('stSep') }}{{ photoMeta(tpl.minInputs, tpl.maxInputs) }}</small>
     </button>
@@ -39,7 +40,7 @@ onMounted(async () => { try { templates.value = flatten(await api('/api/template
    <div class="bh"><h2 id="home-recent">{{ t('stContinue') }}</h2><button v-if="projects.length > recent.length" type="button" class="more" @click="go('chats')">{{ t('stAllChats') }}<ChevronLeft class="dir"/></button></div>
    <div class="recent">
     <button v-for="p in recent" :key="p.id" type="button" class="rc" @click="go('chat', p.id)">
-     <span class="thumb"><img v-if="p.coverId" :src="`/api/generations/${p.coverId}/image`" alt="" loading="lazy"><MessagesSquare v-else/></span>
+     <span class="thumb"><img v-if="p.coverId" :src="sized(`/api/generations/${p.coverId}/image`, THUMB)" alt="" loading="lazy"><MessagesSquare v-else/></span>
      <span class="rc-text"><b class="truncate" dir="auto">{{ p.title }}</b><small>{{ ago(p.updatedAt) }}{{ t('stSep') }}{{ counted(p.generationCount, 'stMessagesOne', 'stMessages') }}</small></span>
     </button>
    </div>

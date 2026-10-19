@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { Search, Plus, MessagesSquare, ChevronLeft } from 'lucide-vue-next';
 import { counted } from '../components/studio/shared.js';
 import { t, statusKnown, projects, dayGroup, ago, when, go } from '../core';
+import { sized, THUMB } from '../images.js';
 // Every chat of the person's, newest first and grouped by day, the way the side menu lists them; it is the phone's «Chats» tab.
 const query = ref('');
 const GROUPS = ['today', 'yesterday', 'thisWeek', 'earlier'], LABELS = { today: 'shToday', yesterday: 'shYesterday', thisWeek: 'shThisWeek', earlier: 'shEarlier' };
@@ -26,7 +27,7 @@ const groups = computed(() => {
    <h2 :id="`chats-${g.key}`">{{ t(LABELS[g.key]) }}</h2>
    <div class="rows">
     <button v-for="p in g.items" :key="p.id" type="button" class="row" @click="go('chat', p.id)">
-     <span class="thumb"><img v-if="p.coverId" :src="`/api/generations/${p.coverId}/image`" alt="" loading="lazy"><MessagesSquare v-else/></span>
+     <span class="thumb"><img v-if="p.coverId" :src="sized(`/api/generations/${p.coverId}/image`, THUMB)" alt="" loading="lazy"><MessagesSquare v-else/></span>
      <span class="text"><b class="truncate" dir="auto">{{ p.title }}</b><small>{{ ago(p.updatedAt) }}{{ t('stSep') }}{{ counted(p.generationCount, 'stMessagesOne', 'stMessages') }}</small></span>
      <ChevronLeft class="go"/>
     </button>

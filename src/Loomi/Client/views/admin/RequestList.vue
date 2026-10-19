@@ -4,6 +4,7 @@ import { Globe, Send, Code, CircleCheck, CircleX, Ban, LoaderCircle, MessageSqua
 import Modal from '../../components/Modal.vue';
 import { t, tf, api } from '../../core';
 import { dateTime } from './kit';
+import { sized, THUMB, FULL } from '../../images.js';
 // One person's requests, newest first, twenty at a time: the picture when there is one, what they asked, how it went, where from, what it cost and
 // which package paid. A picture opens whole in a dialog.
 const props = defineProps({ userId: { type: String, required: true } });
@@ -44,7 +45,7 @@ function toggle(r) { const next = new Set(expanded.value); if (!next.delete(r.id
   <div v-else-if="!items.length" class="quiet"><MessagesSquare/><span>{{ t(failed ? 'adCouldNotLoad' : 'usageNoRequests') }}</span></div>
   <ol v-else class="list-reset">
    <li v-for="r in items" :key="r.id" class="req" :class="{ open: expanded.has(r.id) }">
-    <button v-if="r.hasImage" class="thumb" :aria-label="t('usageOpenImage')" :title="t('usageOpenImage')" @click="viewing = r"><img :src="imageOf(r)" :alt="alt(r)" loading="lazy"></button>
+    <button v-if="r.hasImage" class="thumb" :aria-label="t('usageOpenImage')" :title="t('usageOpenImage')" @click="viewing = r"><img :src="sized(imageOf(r), THUMB)" :alt="alt(r)" loading="lazy"></button>
     <span v-else class="thumb empty" aria-hidden="true"><component :is="badge(r.status)[1]" :class="{ spin: !settled(r.status) }"/></span>
     <div class="body">
      <div class="meta"><time :datetime="r.createdAt">{{ dateTime(r.createdAt) }}</time>{{ t('adSep') }}<FolderOpen class="fi"/><bdi>{{ r.projectTitle }}</bdi>{{ t('adSep') }}{{ t(r.operation) }}</div>
@@ -67,7 +68,7 @@ function toggle(r) { const next = new Set(expanded.value); if (!next.delete(r.id
 
   <Teleport to="body">
    <Modal v-if="viewing" :title="viewing.projectTitle" :close-label="t('close')" size="full" @close="viewing = null">
-    <img class="full" :src="imageOf(viewing)" :alt="alt(viewing)">
+    <img class="full" :src="sized(imageOf(viewing), FULL)" :alt="alt(viewing)">
     <p v-if="viewing.prompt" class="muted-text" dir="auto">{{ viewing.prompt }}</p>
     <div class="dlg-actions"><a class="btn" :href="imageOf(viewing)" :download="`loomi-${viewing.id}`"><Download/>{{ t('download') }}</a></div>
    </Modal>

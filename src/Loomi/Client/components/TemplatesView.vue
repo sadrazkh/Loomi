@@ -7,6 +7,7 @@ import TemplateEditor from './TemplateEditor.vue';
 import ConfirmDialog from './studio/ConfirmDialog.vue';
 import { payLine } from './studio/shared.js';
 import { photoHint, photoMeta, sampleSrc, flatten } from './templates.js';
+import { sized, CARD, VIEW } from '../images.js';
 import { t, tf, n, locale, isOwner, busy, error, api, action, openCreated, go } from '../core';
 // Two faces of one list. Without manage, the catalog people choose from: categories, cards, and the dialog that makes one with their photos.
 // With manage (the management page), the owner's side only: categories, every template active or not, the editor and the samples.
@@ -159,7 +160,7 @@ async function deleteCategory() { const c = categoryTarget.value; await action(a
     <template v-if="manage">
      <button v-for="tpl in s.templates" :key="tpl.id" type="button" class="tcard" :class="{ off: !tpl.isActive }" @click="edit(tpl)">
       <span class="cover">
-       <img v-if="tpl.sampleUrl" :src="sampleSrc(tpl)" alt="" loading="lazy"><span v-else class="no-sample"><ImageOff/></span>
+       <img v-if="tpl.sampleUrl" :src="sized(sampleSrc(tpl), CARD)" alt="" loading="lazy"><span v-else class="no-sample"><ImageOff/></span>
        <span class="badges">
         <span v-if="!tpl.isActive" class="pill pill-muted"><EyeOff/>{{ t('stInactive') }}</span>
         <span v-if="tpl.sampleState === 'generating'" class="pill pill-warn"><LoaderCircle class="spin"/>{{ t('stSampleGenerating') }}</span>
@@ -174,7 +175,7 @@ async function deleteCategory() { const c = categoryTarget.value; await action(a
     </template>
     <template v-else>
      <button v-for="tpl in s.templates" :key="tpl.id" type="button" class="tcard" @click="choose(tpl)">
-      <span class="cover"><img :src="tpl.sampleUrl" alt="" loading="lazy"></span>
+      <span class="cover"><img :src="sized(tpl.sampleUrl, CARD)" alt="" loading="lazy"></span>
       <b dir="auto">{{ tpl.title }}</b>
       <small>{{ photoMeta(tpl.minInputs, tpl.maxInputs) }}</small>
      </button>
@@ -184,7 +185,7 @@ async function deleteCategory() { const c = categoryTarget.value; await action(a
 
   <Teleport v-if="chosen" to="body"><Modal size="lg" :title="chosen.title" :close-label="t('stClose')" @close="closeUse">
    <form class="use" @submit.prevent="make">
-    <img class="sample" :src="chosen.sampleUrl" :alt="chosen.title">
+    <img class="sample" :src="sized(chosen.sampleUrl, VIEW)" :alt="chosen.title">
     <div class="use-body">
      <p v-if="chosen.instructions" class="instructions" dir="auto">{{ chosen.instructions }}</p>
      <PhotoPicker v-if="chosen.maxInputs > 0" id="template-photos" v-model="photos" :max="chosen.maxInputs" :label="t('stYourPhotos')" :hint="hint"/>

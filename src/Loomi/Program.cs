@@ -97,6 +97,7 @@ builder.Services.AddSingleton<IImageProvider, GeminiApiProvider>();
 builder.Services.AddSingleton<ProviderRegistry>();
 builder.Services.AddSingleton<IChromiumLauncher, ChromiumLauncher>();
 builder.Services.AddSingleton<IImageStorage, ImageStorage>();
+builder.Services.AddSingleton<ImagePreviews>();
 builder.Services.AddSingleton<PasswordService>();
 builder.Services.AddScoped<ProjectRepository>();
 builder.Services.AddScoped<GenerationService>();
