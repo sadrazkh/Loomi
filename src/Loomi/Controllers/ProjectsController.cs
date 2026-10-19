@@ -12,7 +12,7 @@ namespace Loomi.Controllers;
 public class ProjectsController(AppDbContext db, ProjectRepository projects, GenerationService generations, IImageStorage storage) : ControllerBase
 {
     private Viewer Me => Viewer.From(User);
-    [HttpGet] public async Task<IActionResult> List(CancellationToken ct) => Ok(await projects.ListAsync(Me, ct));
+    [HttpGet] public async Task<IActionResult> List(bool mine = false, CancellationToken ct = default) => Ok(await projects.ListAsync(Me, ct, mine));
     [HttpPost] public async Task<IActionResult> Create(CreateProject request, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.Title)) return BadRequest(new { error = "InvalidTitle" });
