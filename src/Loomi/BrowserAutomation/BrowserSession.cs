@@ -20,6 +20,10 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
     private IBrowserContext? context;
     private IPage? page;
     private string state = "Disconnected";
+    /// <summary>Set when the tab's renderer dies, which on a server short of memory is the kernel killing it. A crashed tab is not closed, so without
+    /// this every check on it simply finds nothing and the run waited out its whole timeout while the picture sat finished in the conversation.</summary>
+    private volatile bool crashed;
+    private const int MaxRecoveries = 2;
     public bool Busy => gate.CurrentCount == 0;
     /// <summary>The last state observed, without touching the page, so listing accounts costs no browser traffic.</summary>
     public string State => page is null or { IsClosed: true } ? "Disconnected" : state;
@@ -71,8 +75,33 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
         }
         finally { gate.Release(); }
     }
+    /// <summary>A crashed tab is closed at once. On the live server a call made to a tab the kernel had killed never returned at all, and the run, and
+    /// the account's every request after it, hung there; closing the tab fails those calls, so the run can reopen the conversation instead.</summary>
+    private void Watch(IPage tab) => tab.Crash += (_, _) => Abandon(tab, "The ChatGPT tab crashed; the server is most likely short of memory");
+    private void Abandon(IPage tab, string why)
+    {
+        if (crashed) return;
+        crashed = true;
+        logger?.LogWarning("{Why}", why);
+        _ = Task.Run(async () => { try { await tab.CloseAsync(); } catch (PlaywrightException) { /* gone already */ } });
+    }
+    /// <summary>A fresh tab in the same browser, signed in as before, in place of one that crashed.</summary>
+    private async Task ReplaceTabAsync()
+    {
+        try { await page!.CloseAsync(); } catch (PlaywrightException) { /* already gone with its renderer */ }
+        page = await context!.NewPageAsync();
+        Watch(page);
+        crashed = false;
+    }
     private async Task EnsureAsync()
     {
+        if (context != null && page is { IsClosed: false } && crashed)
+        {
+            await ReplaceTabAsync();
+            await NavigateAsync("https://chatgpt.com/");
+            await SettleAsync();
+            return;
+        }
         if (context != null && page is { IsClosed: false }) return;
         if (context != null) { try { await context.CloseAsync(); } catch (PlaywrightException) { } }
         Directory.CreateDirectory(profile);
@@ -80,6 +109,8 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
         context.SetDefaultTimeout(settings.ActionTimeoutMs);
         context.SetDefaultNavigationTimeout(settings.NavigationTimeoutMs);
         page = context.Pages.FirstOrDefault() ?? await context.NewPageAsync();
+        Watch(page);
+        crashed = false;
         await NavigateAsync("https://chatgpt.com/");
         await SettleAsync();
     }
@@ -119,10 +150,19 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
     {
         await gate.WaitAsync(ct);
         var step = "opening the browser";
+        var clock = new RunClock();
+        // One line per finished run saying where its time went, so "it is slow" can be answered from the log rather than guessed at.
+        BrowserResult Done(BrowserResult result)
+        {
+            clock.Mark("handed over");
+            logger?.LogInformation("Run timings ({Operation}, {Outcome}): {Timings}", operation, result.Image != null ? "image" : "words", clock);
+            return result;
+        }
         try
         {
             await report(RunStatus.OpeningBrowser);
             await EnsureAsync();
+            clock.Mark("browser");
             await report(RunStatus.OpeningChatGPT);
             // Continuing a thread goes back into it. A conversation the site has since dropped lands on the home page instead, and starting a fresh chat
             // there would answer the person with none of what came before, so that is refused rather than done quietly.
@@ -134,10 +174,12 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             await NavigateAsync(continuing ? conversation! : "https://chatgpt.com/", allowance);
             step = "waiting for the message box";
             await Visible($"{settings.Selectors.Composer}, {settings.Selectors.QuestionForm}").First.WaitForAsync(new() { Timeout = (float)Math.Max(1000, (opened - DateTime.UtcNow).TotalMilliseconds) });
+            clock.Mark("page");
             if (continuing && !IsConversation(page!.Url)) throw new InvalidOperationException("ConversationNotSaved");
             if (continuing) { step = "waiting for the conversation to load"; await SettleConversationAsync(ct); }
             await DetectAsync();
             if (state != "Connected") throw new InvalidOperationException(state == "VerificationRequired" ? "VerificationRequired" : "LoginRequired");
+            clock.Mark("settle");
             ct.ThrowIfCancellationRequested();
             step = "clearing old attachments";
             await ClearAttachmentsAsync(ct);
@@ -147,6 +189,7 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
                 await LoadedAsync();
                 step = "attaching pictures";
                 await AttachAsync(inputs, ct);
+                clock.Mark("attach");
             }
             step = "reading the page";
             var before = await page!.Locator(settings.Selectors.Assistant).CountAsync();
@@ -175,95 +218,146 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
                 await Visible(settings.Selectors.Send).First.ClickAsync();
             }
             step = "waiting for the answer";
+            clock.Mark("send");
             await report(RunStatus.WaitingForResponse);
             var deadline = DateTime.UtcNow.AddSeconds(settings.GenerationTimeoutSeconds);
             string? previous = null, lastWords = null;
-            DateTime? stableSince = null, wordsSince = null, quietSince = null;
+            DateTime? stableSince = null, wordsSince = null, quietSince = null, recoveredAt = null;
             bool announced = false, urlSeen = false, sawStop = false;
+            // Where the answer lives, so a tab that dies on the way can be reopened on it: the site keeps generating whatever the tab does.
+            var thread = continuing ? conversation : null;
+            var recoveries = 0;
+            // Each pass over the page sets the beat; one that stops for longer than any look at a page takes is a tab that will never answer.
+            var beat = DateTime.UtcNow;
+            using var watching = new CancellationTokenSource();
+            var watchdog = Task.Run(async () =>
+            {
+                while (!watching.IsCancellationRequested)
+                {
+                    try { await Task.Delay(TimeSpan.FromSeconds(Math.Min(10, Math.Max(1, settings.HungSeconds / 3))), watching.Token); } catch (OperationCanceledException) { return; }
+                    if (DateTime.UtcNow - beat > TimeSpan.FromSeconds(settings.HungSeconds) && page is { } tab) Abandon(tab, "A look at the ChatGPT tab hung; reopening it");
+                }
+            });
+            try
+            {
             while (DateTime.UtcNow < deadline)
             {
+                beat = DateTime.UtcNow;
                 await Task.Delay(1500, ct);
+                if (crashed)
+                {
+                    // The dead tab still knows its last address: a crash right after sending happens before this loop has read it.
+                    if (thread == null && IsConversation(page.Url) && !page.Url.Contains("local-", StringComparison.OrdinalIgnoreCase)) thread = page.Url;
+                    if (thread == null || thread.Contains("local-", StringComparison.OrdinalIgnoreCase) || recoveries++ >= MaxRecoveries) throw new InvalidOperationException("BrowserCrashed");
+                    step = "reopening the conversation after a crash";
+                    await ReplaceTabAsync();
+                    await NavigateAsync(thread, settings.ConversationOpenSeconds * 1000);
+                    await Visible($"{settings.Selectors.Composer}, {settings.Selectors.QuestionForm}").First.WaitForAsync(new() { Timeout = settings.ConversationOpenSeconds * 1000 });
+                    await SettleConversationAsync(ct);
+                    step = "waiting for the answer";
+                    // Everything is drawn afresh: the newest picture is judged by what it is, against what the page showed before the prompt went.
+                    imagesBefore = 0; previous = null; stableSince = null; wordsSince = null; quietSince = null; lastWords = null;
+                    recoveredAt = DateTime.UtcNow;
+                    clock.Mark("recovered");
+                    continue;
+                }
                 if (!urlSeen && IsConversation(page.Url))
                 {
                     urlSeen = true;
+                    if (!page.Url.Contains("local-", StringComparison.OrdinalIgnoreCase)) thread = page.Url;
                     await report(announced ? RunStatus.GeneratingImage : RunStatus.WaitingForResponse, page.Url);
                 }
-                var stopping = await Visible(settings.Selectors.Stop).CountAsync() > 0;
-                sawStop |= stopping;
-                var images = page.Locator(settings.Selectors.GeneratedImage);
-                var image = images.Last;
-                if (await images.CountAsync() > imagesBefore && await image.IsVisibleAsync())
+                else if (urlSeen && thread?.Contains("local-", StringComparison.OrdinalIgnoreCase) != false && IsConversation(page.Url) && !page.Url.Contains("local-", StringComparison.OrdinalIgnoreCase)) thread = page.Url;
+                // A call that was in flight when the tab died fails with it; the next pass sees the crash and reopens the conversation.
+                try
                 {
-                    quietSince = null;
-                    var source = await image.EvaluateAsync<string>("el => el.complete && el.naturalWidth >= 256 && el.naturalHeight >= 256 ? el.currentSrc : ''");
-                    // A picture the page already showed before the prompt went, only drawn late: part of the conversation, not the answer to it.
-                    if (source.Length > 0 && shown.Contains(ImageKey(source))) { imagesBefore = await images.CountAsync(); previous = null; stableSince = null; continue; }
-                    if (!announced) { await report(RunStatus.GeneratingImage); announced = true; }
-                    if (string.IsNullOrEmpty(source) || stopping) { stableSince = null; continue; }
-                    if (source != previous || stableSince == null) { previous = source; stableSince = DateTime.UtcNow; continue; }
-                    if ((DateTime.UtcNow - stableSince.Value).TotalSeconds < settings.StableSeconds) continue;
-                    await report(RunStatus.DownloadingImage);
-                    // Read only the rendered image resource in its browser origin; no private API calls.
-                var base64 = await image.EvaluateAsync<string>("""
-                    async el => {
-                      const src = el.currentSrc || el.src;
-                      // The site hands the finished picture over inline, and its own content policy refuses a fetch of a data URL from this page.
-                      // The bytes are already here, so they are read straight off the attribute instead of asked for again.
-                      if (src.startsWith('data:')) {
-                        const comma = src.indexOf(',');
-                        const meta = src.slice(5, comma);
-                        if (!meta.startsWith('image/') || !meta.includes('base64')) throw new Error('InvalidImage');
-                        const data = src.slice(comma + 1);
-                        if (data.length * 3 / 4 > 40 * 1024 * 1024) throw new Error('InvalidImage');
-                        return data;
-                      }
-                      const response = await fetch(src);
-                      if (!response.ok) throw new Error('ImageDownloadFailed');
-                      const blob = await response.blob();
-                      if (blob.size > 40 * 1024 * 1024 || !blob.type.startsWith('image/')) throw new Error('InvalidImage');
-                      return await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result.split(',')[1]); r.onerror = reject; r.readAsDataURL(blob); });
+                    var stopping = await Visible(settings.Selectors.Stop).CountAsync() > 0;
+                    sawStop |= stopping;
+                    var images = page.Locator(settings.Selectors.GeneratedImage);
+                    var image = images.Last;
+                    if (await images.CountAsync() > imagesBefore && await image.IsVisibleAsync())
+                    {
+                        quietSince = null;
+                        var source = await image.EvaluateAsync<string>("el => el.complete && el.naturalWidth >= 256 && el.naturalHeight >= 256 ? el.currentSrc : ''");
+                        // A picture the page already showed before the prompt went, only drawn late: part of the conversation, not the answer to it.
+                        if (source.Length > 0 && shown.Contains(ImageKey(source))) { imagesBefore = await images.CountAsync(); previous = null; stableSince = null; continue; }
+                        if (!announced) { await report(RunStatus.GeneratingImage); announced = true; }
+                        clock.Mark("first sign");
+                        if (string.IsNullOrEmpty(source) || stopping) { stableSince = null; continue; }
+                        // Drawn and no longer streaming: what follows is only the wait that proves the picture has stopped changing.
+                        clock.Mark("drawn");
+                        if (source != previous || stableSince == null) { previous = source; stableSince = DateTime.UtcNow; continue; }
+                        if ((DateTime.UtcNow - stableSince.Value).TotalSeconds < settings.StableSeconds) continue;
+                        clock.Mark("steady");
+                        await report(RunStatus.DownloadingImage);
+                        // Read only the rendered image resource in its browser origin; no private API calls.
+                    var base64 = await image.EvaluateAsync<string>("""
+                        async el => {
+                          const src = el.currentSrc || el.src;
+                          // The site hands the finished picture over inline, and its own content policy refuses a fetch of a data URL from this page.
+                          // The bytes are already here, so they are read straight off the attribute instead of asked for again.
+                          if (src.startsWith('data:')) {
+                            const comma = src.indexOf(',');
+                            const meta = src.slice(5, comma);
+                            if (!meta.startsWith('image/') || !meta.includes('base64')) throw new Error('InvalidImage');
+                            const data = src.slice(comma + 1);
+                            if (data.length * 3 / 4 > 40 * 1024 * 1024) throw new Error('InvalidImage');
+                            return data;
+                          }
+                          const response = await fetch(src);
+                          if (!response.ok) throw new Error('ImageDownloadFailed');
+                          const blob = await response.blob();
+                          if (blob.size > 40 * 1024 * 1024 || !blob.type.startsWith('image/')) throw new Error('InvalidImage');
+                          return await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result.split(',')[1]); r.onerror = reject; r.readAsDataURL(blob); });
+                        }
+                        """);
+                        var picture = Convert.FromBase64String(base64);
+                        // The last guard: bytes the conversation already produced are its history, however late the page drew them. Keep waiting for a new one.
+                        if (knownImages is { Count: > 0 } && knownImages.Contains(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(picture))))
+                        { imagesBefore = await images.CountAsync(); shown.Add(ImageKey(source)); previous = null; stableSince = null; continue; }
+                        return Done(new(picture, await SettledUrlAsync(ct)));
                     }
-                    """);
-                    var picture = Convert.FromBase64String(base64);
-                    // The last guard: bytes the conversation already produced are its history, however late the page drew them. Keep waiting for a new one.
-                    if (knownImages is { Count: > 0 } && knownImages.Contains(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(picture))))
-                    { imagesBefore = await images.CountAsync(); shown.Add(ImageKey(source)); previous = null; stableSince = null; continue; }
-                    return new(picture, await SettledUrlAsync(ct));
+                    // No picture yet. One still on its way keeps the turn open however quiet the rest of the page is: on the live site the stop control
+                    // goes several seconds before the picture lands, and judging the turn over at that moment is what made successes a matter of luck.
+                    var pending = await page.Locator(settings.Selectors.ImagePending).CountAsync() > pendingBefore;
+                    if (stopping || pending)
+                    {
+                        clock.Mark("first sign");
+                        wordsSince = null; quietSince = null;
+                        if (pending && !announced) { await report(RunStatus.GeneratingImage); announced = true; }
+                        continue;
+                    }
+                    // Just reopened, the conversation's words are on the page before its pictures are: an answer in words is not judged until they have had time to arrive.
+                    if (recoveredAt is { } since && DateTime.UtcNow - since < TimeSpan.FromSeconds(20)) continue;
+                    var replies = page.Locator(settings.Selectors.Assistant);
+                    if (await QuestionAsync() is { } asked && asked != askedBefore)
+                    {
+                        // The model is waiting on the person: any preface it wrote reads like progress on its own, so the question is what is handed back.
+                        var preface = await replies.CountAsync() > before ? (await replies.Last.InnerTextAsync()).Trim() : "";
+                        var words = preface.Length > 0 && !preface.Contains(asked) ? preface + "\n\n" + asked : asked;
+                        return Done(new(null, await SettledUrlAsync(ct), words.Length > 8000 ? words[..8000] : words));
+                    }
+                    if (await replies.CountAsync() > before)
+                    {
+                        // Words, and nothing in progress: the model has answered in text, whether a question about the prompt, a refusal or anything else.
+                        // They are taken once they stop changing, so a reply still streaming is not cut short, and handed back to the person who asked.
+                        var words = (await replies.Last.InnerTextAsync()).Trim();
+                        if (words.Length == 0 || words != lastWords) { lastWords = words; wordsSince = DateTime.UtcNow; continue; }
+                        if ((DateTime.UtcNow - wordsSince!.Value).TotalSeconds < settings.StableSeconds) continue;
+                        if (settings.SpentPhrases.Any(phrase => !string.IsNullOrWhiteSpace(phrase) && words.Contains(phrase.Trim(), StringComparison.OrdinalIgnoreCase)))
+                            throw new InvalidOperationException("NoImageReturned");
+                        return Done(new(null, await SettledUrlAsync(ct), words.Length > 8000 ? words[..8000] : words));
+                    }
+                    // Nothing to read and nothing in progress after the model had visibly started: the hooks have drifted. Bounded, so a run cannot sit
+                    // for the whole timeout on a page that will never say anything the selectors understand.
+                    if (!sawStop) continue;
+                    quietSince ??= DateTime.UtcNow;
+                    if ((DateTime.UtcNow - quietSince.Value).TotalSeconds >= settings.QuietSeconds) throw new InvalidOperationException("NoImageReturned");
                 }
-                // No picture yet. One still on its way keeps the turn open however quiet the rest of the page is: on the live site the stop control
-                // goes several seconds before the picture lands, and judging the turn over at that moment is what made successes a matter of luck.
-                var pending = await page.Locator(settings.Selectors.ImagePending).CountAsync() > pendingBefore;
-                if (stopping || pending)
-                {
-                    wordsSince = null; quietSince = null;
-                    if (pending && !announced) { await report(RunStatus.GeneratingImage); announced = true; }
-                    continue;
-                }
-                var replies = page.Locator(settings.Selectors.Assistant);
-                if (await QuestionAsync() is { } asked && asked != askedBefore)
-                {
-                    // The model is waiting on the person: any preface it wrote reads like progress on its own, so the question is what is handed back.
-                    var preface = await replies.CountAsync() > before ? (await replies.Last.InnerTextAsync()).Trim() : "";
-                    var words = preface.Length > 0 && !preface.Contains(asked) ? preface + "\n\n" + asked : asked;
-                    return new(null, await SettledUrlAsync(ct), words.Length > 8000 ? words[..8000] : words);
-                }
-                if (await replies.CountAsync() > before)
-                {
-                    // Words, and nothing in progress: the model has answered in text, whether a question about the prompt, a refusal or anything else.
-                    // They are taken once they stop changing, so a reply still streaming is not cut short, and handed back to the person who asked.
-                    var words = (await replies.Last.InnerTextAsync()).Trim();
-                    if (words.Length == 0 || words != lastWords) { lastWords = words; wordsSince = DateTime.UtcNow; continue; }
-                    if ((DateTime.UtcNow - wordsSince!.Value).TotalSeconds < settings.StableSeconds) continue;
-                    if (settings.SpentPhrases.Any(phrase => !string.IsNullOrWhiteSpace(phrase) && words.Contains(phrase.Trim(), StringComparison.OrdinalIgnoreCase)))
-                        throw new InvalidOperationException("NoImageReturned");
-                    return new(null, await SettledUrlAsync(ct), words.Length > 8000 ? words[..8000] : words);
-                }
-                // Nothing to read and nothing in progress after the model had visibly started: the hooks have drifted. Bounded, so a run cannot sit
-                // for the whole timeout on a page that will never say anything the selectors understand.
-                if (!sawStop) continue;
-                quietSince ??= DateTime.UtcNow;
-                if ((DateTime.UtcNow - quietSince.Value).TotalSeconds >= settings.QuietSeconds) throw new InvalidOperationException("NoImageReturned");
+                catch (Exception e) when (crashed && e is PlaywrightException or TimeoutException) { /* reopened on the next pass */ }
             }
+            }
+            finally { watching.Cancel(); await watchdog; }
             throw new InvalidOperationException("GenerationTimeout");
         }
         // Every way a run can stop short is recorded, the run's own verdicts (an upload that never finished, a reply without a picture) as much as the

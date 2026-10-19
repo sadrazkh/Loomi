@@ -18,6 +18,9 @@ public class BrowserOptions
     /// control gets, every follow-up in a chat failed while every first message worked. Nothing has been sent while this runs, so waiting costs no more
     /// than time.</summary>
     public int ConversationOpenSeconds { get; set; } = 150;
+    /// <summary>How long one look at the page may take while waiting for an answer before the tab is taken for hung and reopened. A tab the kernel
+    /// killed for memory never answered at all, and held its account for good.</summary>
+    public int HungSeconds { get; set; } = 90;
     /// <summary>How long to let the site render before judging the connection state.</summary>
     public int SettleTimeoutMs { get; set; } = 15000;
     public int GenerationTimeoutSeconds { get; set; } = 600;
