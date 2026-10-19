@@ -1,8 +1,10 @@
 <script setup>
-import { onMounted } from 'vue';
+import { onMounted, onBeforeUnmount } from 'vue';
 import { X, AlertTriangle } from 'lucide-vue-next';
 import AppSidebar from './components/AppSidebar.vue';
 import MobileBar from './components/MobileBar.vue';
+import TopBar from './components/TopBar.vue';
+import ChatSearch from './components/ChatSearch.vue';
 import LoginView from './views/LoginView.vue';
 import HomeView from './views/HomeView.vue';
 import ChatView from './views/ChatView.vue';
@@ -11,10 +13,14 @@ import GalleryView from './views/GalleryView.vue';
 import AccountView from './views/AccountView.vue';
 import AdminView from './views/AdminView.vue';
 import TemplatesView from './components/TemplatesView.vue';
-import { t, authenticated, initialized, error, isOwner, ready, statusKnown, view, go, boot } from './core';
+import { t, authenticated, initialized, error, isOwner, ready, statusKnown, view, searchOpen, go, boot } from './core';
 // The frame only: which page shows, the side menu or the phone bars around it, and the one place errors surface. Each page owns its own markup and state.
-onMounted(boot);
+// Ctrl/Cmd+K opens the chat search from anywhere, as it does in most apps that have one.
+function shortcut(e) { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && authenticated.value) { e.preventDefault(); searchOpen.value = !searchOpen.value; } }
+onMounted(() => { boot(); document.addEventListener('keydown', shortcut); });
+onBeforeUnmount(() => document.removeEventListener('keydown', shortcut));
 const dismiss = () => { error.value = ''; };
+const closeSearch = () => { searchOpen.value = false; };
 </script>
 
 <template>
@@ -22,6 +28,7 @@ const dismiss = () => { error.value = ''; };
  <div v-else class="shell" :class="{ 'in-chat': view==='chat' }">
   <AppSidebar/>
   <div class="stage">
+   <TopBar/>
    <MobileBar/>
    <p v-if="!ready && statusKnown" class="service" role="status">
     <AlertTriangle/><span>{{ t(isOwner ? 'shServiceDownOwner' : 'shServiceDown') }}</span>
@@ -35,6 +42,7 @@ const dismiss = () => { error.value = ''; };
    <AccountView v-else-if="view==='account'"/>
    <AdminView v-else-if="view==='admin' && isOwner"/>
   </div>
+  <ChatSearch v-if="searchOpen" @close="closeSearch"/>
   <div v-if="error" class="toast" role="alert"><AlertTriangle/><span>{{ t(error) }}</span><button class="btn btn-ghost btn-icon btn-sm" :aria-label="t('shDismiss')" @click="dismiss"><X/></button></div>
  </div>
 </template>

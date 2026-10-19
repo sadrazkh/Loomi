@@ -27,6 +27,8 @@ export const connected = ref({ ready: false, stalled: null, desktopUrl: null, pr
 /** False until the first status arrives, so a page does not flash "paused" before it knows. */
 export const statusKnown = ref(false);
 export const provider = ref('ChatGPT');
+/** The chat search box over the page: opened from the side menu, the top bar, the phone's list or Ctrl/Cmd+K. */
+export const searchOpen = ref(false);
 export const isOwner = computed(() => me.value?.role === 'Owner');
 export const ready = computed(() => connected.value.ready === true);
 // Only providers this workspace actually has an account for; with one there is no choice to offer.

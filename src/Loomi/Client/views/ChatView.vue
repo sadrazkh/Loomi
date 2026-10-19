@@ -94,7 +94,9 @@ watch(() => current.value?.id, () => { op.value = null; shown.value = null; menu
 </script>
 <template>
  <div v-if="current" class="conv">
-  <header class="top">
+  <!-- On a wide screen the chat's title and actions sit in the shell's top bar, beside search and the language and theme, rather than in a second bar. -->
+  <Teleport to="#topbar-page" defer :disabled="narrow">
+  <header class="top" :class="{ docked: !narrow }">
    <button type="button" class="btn btn-ghost btn-icon back" :aria-label="t('shBack')" @click="go('chats')"><ArrowRight class="dir"/></button>
    <div class="title"><h1 class="truncate" dir="auto">{{ current.title }}</h1><span v-if="templateTitle" class="pill"><LayoutTemplate/><bdi class="truncate">{{ templateTitle }}</bdi></span></div>
    <span class="grow"/>
@@ -112,6 +114,7 @@ watch(() => current.value?.id, () => { op.value = null; shown.value = null; menu
     </div>
    </div>
   </header>
+  </Teleport>
 
   <main class="thread">
    <div ref="col" class="col" :class="`as-${layout}`">
@@ -153,6 +156,9 @@ watch(() => current.value?.id, () => { op.value = null; shown.value = null; menu
 .conv{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh}
 .top{position:sticky;top:0;z-index:14;display:flex;align-items:center;gap:10px;min-height:58px;padding:0 24px;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
 .back{display:none}
+.top.docked{position:static;z-index:auto;flex:1;min-width:0;min-height:0;padding:0;background:none;border:0;backdrop-filter:none;-webkit-backdrop-filter:none}
+/* The shell's top bar is above this page on a wide screen, so the page fills what is left of the window. */
+@media (min-width:861px){.conv{min-height:calc(100vh - 61px)}}
 :root[dir=ltr] .dir{transform:scaleX(-1)}
 .title{display:flex;align-items:center;gap:10px;min-width:0}
 .title h1{font-size:16px;font-weight:600;line-height:1.5}
