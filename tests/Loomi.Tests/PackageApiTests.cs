@@ -338,4 +338,17 @@ public class PackageApiTests
         Assert.Equal(HttpStatusCode.NoContent, (await owner.DeleteAsync($"/api/users/{sara}")).StatusCode);
         Assert.Equal(0, await world.DbAsync(db => db.CreditPackages.CountAsync()));
     }
+
+    [Fact]
+    public async Task A_package_short_enough_to_be_ending_from_its_first_day_is_never_reminded_about()
+    {
+        using var world = await ApiV1World.CreateAsync();
+        var (sara, _) = await world.MemberAsync("sara");
+        var owner = await UserAdminTests.OwnerSessionAsync(world.Factory);
+        var brief = (await GrantAsync(owner, sara, new { kind = "Daily", amount = 3, days = 3 })).GetProperty("id").GetGuid();
+        var month = (await GrantAsync(owner, sara, new { kind = "Daily", amount = 3, days = 30 })).GetProperty("id").GetGuid();
+        var reminded = await world.DbAsync(db => db.CreditPackages.AsNoTracking().ToDictionaryAsync(p => p.Id, p => p.ReminderSentAt));
+        Assert.NotNull(reminded[brief]);
+        Assert.Null(reminded[month]);
+    }
 }

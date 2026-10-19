@@ -60,7 +60,9 @@ public class PackagesController(AppDbContext db, ITelegramClient telegram, BotSe
             if (current.Count > 0) starts = DateTime.SpecifyKind(current.Max(), DateTimeKind.Utc);
         }
         var package = new CreditPackage { UserId = id, Kind = kind, Amount = amount, Name = name.Length == 0 ? Packages.DefaultName(kind, amount) : name, StartsAt = starts,
-                                          EndsAt = starts.AddDays(request.Days.Value), CreatedAt = now, ByUserId = Viewer.From(User).Id, Note = string.IsNullOrEmpty(note) ? null : note };
+                                          EndsAt = starts.AddDays(request.Days.Value), CreatedAt = now, ByUserId = Viewer.From(User).Id, Note = string.IsNullOrEmpty(note) ? null : note,
+                                          // Ending from its first day, it would be "ending in N days" ten minutes after the person heard it began.
+                                          ReminderSentAt = TimeSpan.FromDays(request.Days.Value) <= PackageReminderWorker.Soon ? now : null };
         db.CreditPackages.Add(package);
         await db.SaveChangesAsync(ct);
         if (request.Notify == true) await NotifyAsync(package, now, ct);

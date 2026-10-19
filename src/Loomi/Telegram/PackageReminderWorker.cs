@@ -9,7 +9,9 @@ namespace Loomi.Telegram;
 public class PackageReminderWorker(IServiceScopeFactory scopes, ITelegramClient client, BotSettings bot, ILogger<PackageReminderWorker> logger) : BackgroundService
 {
     public static readonly TimeSpan Every = TimeSpan.FromMinutes(10);
-    private static readonly TimeSpan Soon = TimeSpan.FromDays(3), Recent = TimeSpan.FromDays(2);
+    /// <summary>How close to its end a package is reminded about. Public so a package granted this short is marked reminded at once: it is ending from its first day.</summary>
+    public static readonly TimeSpan Soon = TimeSpan.FromDays(3);
+    private static readonly TimeSpan Recent = TimeSpan.FromDays(2);
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
