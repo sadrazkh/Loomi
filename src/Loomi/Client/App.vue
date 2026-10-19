@@ -11,7 +11,7 @@ import GalleryView from './views/GalleryView.vue';
 import AccountView from './views/AccountView.vue';
 import AdminView from './views/AdminView.vue';
 import TemplatesView from './components/TemplatesView.vue';
-import { t, locale, authenticated, initialized, me, error, busy, isOwner, ready, statusKnown, view, api, action, postForm, uploadFiles, openCreated, go, boot } from './core';
+import { t, authenticated, initialized, error, isOwner, ready, statusKnown, view, go, boot } from './core';
 // The frame only: which page shows, the side menu or the phone bars around it, and the one place errors surface. Each page owns its own markup and state.
 onMounted(boot);
 const dismiss = () => { error.value = ''; };
@@ -30,7 +30,7 @@ const dismiss = () => { error.value = ''; };
    <HomeView v-if="view==='home'"/>
    <ChatView v-else-if="view==='chat'"/>
    <ChatsView v-else-if="view==='chats'"/>
-   <TemplatesView v-else-if="view==='templates'" :t="t" :locale="locale" :is-owner="isOwner" :api="api" :upload="uploadFiles" :post-form="postForm" :action="action" :busy="busy" :error="error" :credits="me?.credits??null" @open="openCreated"/>
+   <TemplatesView v-else-if="view==='templates'"/>
    <GalleryView v-else-if="view==='gallery'"/>
    <AccountView v-else-if="view==='account'"/>
    <AdminView v-else-if="view==='admin' && isOwner"/>
