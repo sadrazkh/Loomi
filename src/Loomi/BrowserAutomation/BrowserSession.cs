@@ -260,6 +260,9 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
                     if (thread == null && IsConversation(page.Url) && !page.Url.Contains("local-", StringComparison.OrdinalIgnoreCase)) thread = page.Url;
                     if (thread == null || thread.Contains("local-", StringComparison.OrdinalIgnoreCase) || recoveries++ >= MaxRecoveries) throw new InvalidOperationException("BrowserCrashed");
                     step = "reopening the conversation after a crash";
+                    // Reopening a heavy conversation takes as long as it is allowed to; the watchdog keeps quiet until then rather than taking the new tab,
+                    // still loading, for another hung one.
+                    beat = DateTime.UtcNow.AddSeconds(settings.ConversationOpenSeconds + 30);
                     await ReplaceTabAsync();
                     await NavigateAsync(thread, settings.ConversationOpenSeconds * 1000);
                     await Visible($"{settings.Selectors.Composer}, {settings.Selectors.QuestionForm}").First.WaitForAsync(new() { Timeout = settings.ConversationOpenSeconds * 1000 });
@@ -268,6 +271,7 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
                     // Everything is drawn afresh: the newest picture is judged by what it is, against what the page showed before the prompt went.
                     imagesBefore = 0; previous = null; stableSince = null; wordsSince = null; quietSince = null; lastWords = null;
                     recoveredAt = DateTime.UtcNow;
+                    beat = DateTime.UtcNow;
                     clock.Mark("recovered");
                     continue;
                 }
