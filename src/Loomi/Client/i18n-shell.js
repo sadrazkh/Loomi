@@ -11,7 +11,7 @@ export default {
   shTabNew:'New', shTabChats:'Chats', shTabTemplates:'Templates', shTabAccount:'Account', shBack:'Back',
   shServiceDown:'Making images is paused for now. Anything you send waits in the queue and starts as soon as it is back.',
   shServiceDownOwner:'No ChatGPT account can take work right now. Requests wait in the queue.', shOpenAccounts:'Open accounts',
-  shDismiss:'Dismiss', shLoading:'Loading…',
+  shDismiss:'Dismiss', shLoading:'Loading…', shSep:' · ',
   PackageLimitReached:"Your package's allowance for today is used up. You can carry on tomorrow, or with credits.",
   InvalidPackage:'Check the package: the amount or the number of days is out of range.',
  },
@@ -26,7 +26,7 @@ export default {
   shTabNew:'تصویر تازه', shTabChats:'گفتگوها', shTabTemplates:'قالب‌ها', shTabAccount:'حساب', shBack:'برگشت',
   shServiceDown:'ساخت تصویر فعلاً متوقف است. هر چه بفرستید در صف می‌ماند و به محض راه افتادن شروع می‌شود.',
   shServiceDownOwner:'هیچ حساب ChatGPT الان کار نمی‌گیرد. درخواست‌ها در صف می‌مانند.', shOpenAccounts:'باز کردن حساب‌ها',
-  shDismiss:'بستن', shLoading:'در حال بارگذاری…',
+  shDismiss:'بستن', shLoading:'در حال بارگذاری…', shSep:'، ',
   PackageLimitReached:'سهم امروز بسته‌تان تمام شده است. فردا دوباره می‌توانید، یا با اعتبار ادامه دهید.',
   InvalidPackage:'بسته را بررسی کنید: مقدار یا تعداد روزها خارج از محدوده است.',
  }

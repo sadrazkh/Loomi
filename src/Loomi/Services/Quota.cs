@@ -15,6 +15,9 @@ public static class Quota
     public static async Task<Dictionary<Guid, int>> UsageAsync(this AppDbContext db, CancellationToken ct) =>
         await Today(db).GroupBy(g => g.UserId).Select(x => new { x.Key, Count = x.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count, ct);
     public static Task<int> UsedOnAsync(this AppDbContext db, Guid account, CancellationToken ct) => Today(db).CountAsync(g => g.AccountId == account, ct);
+    /// <summary>Today's usage per provider account in one query, for the owner's account list.</summary>
+    public static async Task<Dictionary<Guid, int>> UsageByAccountAsync(this AppDbContext db, CancellationToken ct) =>
+        await Today(db).Where(g => g.AccountId != null).GroupBy(g => g.AccountId!.Value).Select(x => new { x.Key, Count = x.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count, ct);
     /// <summary>Null means no daily limit: a missing user, or a quota of zero. A real number is what is left of a positive quota.</summary>
     public static async Task<int?> RemainingAsync(this AppDbContext db, Guid user, CancellationToken ct) =>
         await db.Users.AsNoTracking().Where(u => u.Id == user).Select(u => (int?)u.DailyQuota).FirstOrDefaultAsync(ct) is int quota and > 0

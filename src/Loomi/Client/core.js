@@ -174,7 +174,8 @@ export const daysLeft = p => Math.max(0, Math.ceil((when(p.endsAt).getTime() - D
 /** The one-line name of a package the way the wallet and the tables show it: what it gives, then how long it has left. */
 export function packageLabel(p) {
   const what = p.kind === 'Unlimited' ? t('shPkgUnlimited') : p.kind === 'Daily' ? tf('shPkgDaily', p.amount) : tf('shPkgCredits', p.remaining ?? p.amount);
-  return p.state === 'Scheduled' ? `${what} · ${tf('shPkgStarts', date(p.startsAt))}` : `${what} · ${tf('shDaysLeft', daysLeft(p))}`;
+  // The separator is the reader's: in Persian a middle dot beside a Persian digit reads as the digit zero.
+  return p.state === 'Scheduled' ? `${what}${t('shSep')}${tf('shPkgStarts', date(p.startsAt))}` : `${what}${t('shSep')}${tf('shDaysLeft', daysLeft(p))}`;
 }
 /** Today's day in the person's calendar, for grouping chats: today, yesterday, the last seven days, earlier. */
 export function dayGroup(iso) {

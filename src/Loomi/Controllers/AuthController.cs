@@ -10,10 +10,11 @@ using Microsoft.EntityFrameworkCore;
 namespace Loomi.Controllers;
 public record CreateAccount([Required, StringLength(64, MinimumLength = 1)] string Label, Provider Provider = Provider.ChatGPT, string? ApiKey = null);
 public record UpdateAccount([StringLength(64, MinimumLength = 1)] string? Label, [Range(0, 500)] int? DailyCap, bool? IsEnabled);
-/// <summary>KeyHint is all an API account ever shows of its key: enough to tell two apart, never enough to be one.</summary>
-public record AccountDto(Guid Id, Provider Provider, AccountKind Kind, string Label, int DailyCap, bool IsEnabled, DateTime? LastUsedAt, DateTime CreatedAt, string State, bool Busy, bool SpentToday, string? DesktopUrl, string? KeyHint)
+/// <summary>KeyHint is all an API account ever shows of its key: enough to tell two apart, never enough to be one. UsedToday is counted the way
+/// the dispatcher counts it against DailyCap, so the owner reads the same number that decides whether the account takes more work.</summary>
+public record AccountDto(Guid Id, Provider Provider, AccountKind Kind, string Label, int DailyCap, bool IsEnabled, DateTime? LastUsedAt, DateTime CreatedAt, string State, bool Busy, bool SpentToday, string? DesktopUrl, string? KeyHint, int UsedToday = 0)
 {
-    public static AccountDto From(ProviderAccount a, string state, bool busy, bool spent, string? desktop, string? keyHint = null) => new(a.Id, a.Provider, a.Kind, a.Label, a.DailyCap, a.IsEnabled, a.LastUsedAt, a.CreatedAt, state, busy, spent, desktop, keyHint);
+    public static AccountDto From(ProviderAccount a, string state, bool busy, bool spent, string? desktop, string? keyHint = null, int usedToday = 0) => new(a.Id, a.Provider, a.Kind, a.Label, a.DailyCap, a.IsEnabled, a.LastUsedAt, a.CreatedAt, state, busy, spent, desktop, keyHint, usedToday);
 }
 [ApiController, Authorize, Route("api/auth")]
 public class AuthController(AppDbContext db, ProviderRegistry providers, AccountHealth health, AccountSecrets secrets) : ControllerBase
@@ -46,7 +47,8 @@ public class AuthController(AppDbContext db, ProviderRegistry providers, Account
     {
         var desktop = await DesktopAsync();
         var accounts = await db.Accounts.AsNoTracking().OrderBy(a => a.CreatedAt).ToListAsync(ct);
-        return Ok(accounts.Select(a => { var p = providers.For(a.Provider); return AccountDto.From(a, p.StateOf(a), p.IsBusy(a), health.IsSpent(a.Id), desktop, AccountSecrets.Hint(secrets.Reveal(a.Secret))); }));
+        var used = await db.UsageByAccountAsync(ct);
+        return Ok(accounts.Select(a => { var p = providers.For(a.Provider); return AccountDto.From(a, p.StateOf(a), p.IsBusy(a), health.IsSpent(a.Id), desktop, AccountSecrets.Hint(secrets.Reveal(a.Secret)), used.GetValueOrDefault(a.Id)); }));
     }
     [Authorize(Roles = nameof(UserRole.Owner))] [HttpPost("accounts")] public async Task<IActionResult> Create(CreateAccount request, CancellationToken ct)
     {
@@ -79,7 +81,7 @@ public class AuthController(AppDbContext db, ProviderRegistry providers, Account
         if (request.IsEnabled is { } enabled) account.IsEnabled = enabled;
         await db.SaveChangesAsync(ct);
         var provider = providers.For(account.Provider);
-        return Ok(AccountDto.From(account, provider.StateOf(account), provider.IsBusy(account), health.IsSpent(id), await provider.DesktopUrlAsync(), AccountSecrets.Hint(secrets.Reveal(account.Secret))));
+        return Ok(AccountDto.From(account, provider.StateOf(account), provider.IsBusy(account), health.IsSpent(id), await provider.DesktopUrlAsync(), AccountSecrets.Hint(secrets.Reveal(account.Secret)), await db.UsedOnAsync(id, ct)));
     }
     [Authorize(Roles = nameof(UserRole.Owner))] [HttpDelete("accounts/{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
