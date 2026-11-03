@@ -787,7 +787,7 @@ public class NotificationTests
         {
             await worker.HandleAsync(Text("/help", SaraChat, language), default);
             Assert.Contains("/notify", bot.LastText);
-            Assert.Equal(BotMessages.Help(persian), bot.LastText);
+            Assert.Equal(TelegramBotWorker.HelpText(persian), bot.LastText);
         }
         var command = Assert.Single(TelegramBotWorker.Commands, c => c.Command == "notify");
         Assert.True(BotMessages.LooksPersian(command.Fa) && !BotMessages.LooksPersian(command.En));

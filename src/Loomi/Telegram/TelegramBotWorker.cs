@@ -234,8 +234,8 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
         await db.TelegramLinks.AsNoTracking().Where(l => l.ChatId == chat)
             .Join(db.Users.Where(u => !u.IsDisabled), l => l.UserId, u => u.Id, (_, u) => u).FirstOrDefaultAsync(ct);
     private Task SayAsync(long chat, string key, bool persian, CancellationToken ct) => client.SendTextAsync(chat, BotMessages.Text(key, persian), ct);
-    /// <summary>The help, with the line about /web under it, which is kept with the rest of signing up.</summary>
-    public static string HelpText(bool persian) => BotMessages.Text("help", persian) + "\n\n" + BotMessages.Text("helpWeb", persian);
+    /// <summary>The help, with the lines about /notify and /web under it, each kept with the rest of its own feature.</summary>
+    public static string HelpText(bool persian) => BotMessages.Help(persian) + "\n\n" + BotMessages.Text("helpWeb", persian);
     private Task HelpAsync(long chat, bool persian, CancellationToken ct) =>
         client.SendTextAsync(chat, HelpText(persian), ct, Keys(Row(new BotButton(BotMessages.Text("btnTemplates", persian), "templates"))));
     private async Task BalanceAsync(AppDbContext db, long chat, AppUser user, bool persian, CancellationToken ct)

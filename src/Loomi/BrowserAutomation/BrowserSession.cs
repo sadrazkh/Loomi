@@ -171,10 +171,11 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
     }
     /// <summary>Takes a tab nobody has used for a while back to a clean home page, so a conversation full of pictures does not sit in memory through the
     /// night. One that died in the meantime is brought back, rather than leaving the account showing as disconnected until the next person pays for the
-    /// launch. Done once per quiet stretch, and never to a tab at work.</summary>
+    /// launch. Done once per quiet stretch, and never to a tab at work, nor to one waiting for a person to sign in or pass a check: the owner may be typing
+    /// into that very page over the remote desktop.</summary>
     public async Task TrimIfIdleAsync(CancellationToken ct)
     {
-        if (context == null || (runsOnPage == 0 && !crashed) || DateTime.UtcNow - lastUsed < TimeSpan.FromSeconds(settings.IdleTrimSeconds) || !await gate.WaitAsync(0, ct)) return;
+        if (context == null || (runsOnPage == 0 && !crashed) || (state != "Connected" && !crashed) || DateTime.UtcNow - lastUsed < TimeSpan.FromSeconds(settings.IdleTrimSeconds) || !await gate.WaitAsync(0, ct)) return;
         try
         {
             if (crashed) await EnsureAsync();

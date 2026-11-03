@@ -104,6 +104,21 @@ public class TabUpkeepTests
     }
 
     [Fact]
+    public async Task A_tab_waiting_for_a_person_to_sign_in_is_left_alone()
+    {
+        // The owner may be typing into this very page over the remote desktop; going home would throw away what they have done.
+        var login = "<html><body><a data-testid=\"login-button\" href=\"/auth/login\">Log in</a><textarea id=\"prompt-textarea\"></textarea></body></html>";
+        await using var launcher = new FixtureLauncher { Body = login };
+        await using var session = Session(launcher, o => o.IdleTrimSeconds = 0);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => session.RunAsync(Operation.Generate, "one", [], null, Report, CancellationToken.None));
+        Assert.Equal("LoginRequired", session.State);
+        var loads = Loads(launcher, Home);
+        await session.TrimIfIdleAsync(CancellationToken.None);
+        Assert.Equal(loads, Loads(launcher, Home));
+        Assert.Equal("LoginRequired", session.State);
+    }
+
+    [Fact]
     public async Task A_tab_at_work_is_never_trimmed()
     {
         await using var launcher = new FixtureLauncher { Body = Body.Replace("function send() {", "function send() { history.replaceState({}, '', '/c/fixture-1'); return;") };
