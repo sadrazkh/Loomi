@@ -105,6 +105,8 @@ builder.Services.AddScoped<UsageReport>();
 builder.Services.AddScoped<GrowthSettings>();
 builder.Services.Configure<ReportOptions>(builder.Configuration.GetSection("Reports"));
 builder.Services.AddScoped<TemplateService>();
+builder.Services.AddScoped<StarterService>();
+builder.Services.AddHostedService<StarterSampleWorker>();
 builder.Services.AddHostedService<GenerationWorker>();
 builder.Services.AddReverseProxy().LoadFromMemory(
     [new RouteConfig { RouteId = "desktop", ClusterId = "desktop", Match = new() { Path = "/desktop/{**rest}" }, Transforms = [new Dictionary<string,string> { ["PathRemovePrefix"] = "/desktop" }, new Dictionary<string,string> { ["RequestHeaderRemove"] = "Cookie" }] }],

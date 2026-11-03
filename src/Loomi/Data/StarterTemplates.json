@@ -1,0 +1,302 @@
+[
+  {
+    "key": "portrait-headshot",
+    "category": "پرتره و پروفایل",
+    "title": "پرتره رسمی برای پروفایل کاری",
+    "instructions": "یک عکس واضح از روبه‌رو بگذارید که چهره‌تان کامل دیده شود.",
+    "prompt": "Create a polished professional headshot for a business or careers profile. Vertical 4:5, head and shoulders, eyes level with the camera, a calm and confident expression with a slight smile. Smart, modest business clothing in navy or charcoal against a seamless mid-grey backdrop with soft falloff. Large soft key light from the front left with gentle fill, the look of an 85mm lens at f/4; crisp eyes, natural skin texture, clean neutral colour. Keep the face, identity, skin tone and hair, and any head covering, recognisably the same as in the attached photo; do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 1,
+    "order": 1
+  },
+  {
+    "key": "portrait-soft-studio",
+    "category": "پرتره و پروفایل",
+    "title": "پرتره نرم آتلیه‌ای",
+    "instructions": "یک عکس تک‌نفره با نور خوب بگذارید.",
+    "prompt": "Create a gentle studio portrait with the quiet warmth of a fine portrait sitting. Vertical 4:5, waist up, the body turned slightly and the face toward the camera, a relaxed natural half-smile. Plain cream backdrop with a soft gradient and simple clothing in muted earth tones. Broad window-like light from one side, a faint glow along the hair, shallow depth of field from a 70mm lens. Low contrast, creamy highlights, very fine film grain. Keep the face, identity, skin tone and hair, and any head covering, recognisably the same as in the attached photo; do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 1,
+    "order": 2
+  },
+  {
+    "key": "portrait-black-white",
+    "category": "پرتره و پروفایل",
+    "title": "پرتره کلاسیک سیاه‌وسفید",
+    "instructions": "یک عکس تک‌نفره بگذارید که چهره‌تان در آن واضح باشد.",
+    "prompt": "Create a timeless black-and-white portrait with the character of a mid-century silver-gelatin print. Vertical 4:5, close framing from the chest up, a composed and thoughtful gaze. Dark charcoal backdrop, one defined key light high to the side shaping the cheekbone, a subtle rim light separating the head from the background. Deep blacks, luminous mid-tones, fine visible grain and no colour at all, with the look of a 105mm lens and sharp eyes. Keep the face, identity, skin tone and hair, and any head covering, recognisably the same as in the attached photo; do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 1,
+    "order": 3
+  },
+  {
+    "key": "portrait-cinematic",
+    "category": "پرتره و پروفایل",
+    "title": "پرتره سینمایی",
+    "instructions": "یک عکس تک‌نفره از چهره‌تان بگذارید؛ لازم نیست حرفه‌ای باشد.",
+    "prompt": "Create a portrait that looks like a still from a quiet drama film. Vertical 4:5, medium close-up, the subject looking just past the camera on a city street at dusk, warm shop lights and soft neon melting into large round bokeh behind them. Teal shadows against amber skin light, a little atmospheric haze, a subtle lens flare, a 50mm lens wide open. Rich contrast, gentle film grain, a composed and thoughtful mood. Keep the face, identity, skin tone and hair, and any head covering, recognisably the same as in the attached photo; do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 1,
+    "order": 4
+  },
+  {
+    "key": "portrait-watercolour",
+    "category": "پرتره و پروفایل",
+    "title": "پرتره آبرنگی",
+    "instructions": "یک عکس واضح از چهره‌تان بگذارید.",
+    "prompt": "Turn the subject into a delicate watercolour portrait on cold-pressed paper. Vertical 4:5, head and shoulders, loose transparent washes with soft bleeding edges that fade into bare white paper around the figure, a few free splashes of pigment. Palette of muted rose, ochre and indigo, with skin tones kept true. A fine pencil under-drawing shows through around the eyes and hair. It must look hand-painted rather than like a photo filter. Keep the face, identity, skin tone and hair, and any head covering, recognisably the same as in the attached photo, translated into this medium; do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 1,
+    "order": 5
+  },
+  {
+    "key": "couple-golden-hour",
+    "category": "دونفره و خانوادگی",
+    "title": "عکس دونفره در غروب طلایی",
+    "instructions": "یک عکس از هر دو نفر کنار هم، یا از هر نفر یک عکس جدا بگذارید.",
+    "prompt": "Create a warm, tender photograph of a couple at golden hour. Vertical 4:5, two people side by side on a path through tall dry grass, holding hands and turning toward each other with easy laughter, elegantly and modestly dressed in soft neutral tones. The low sun sits behind them, with warm rim light and a gentle flare; honey and peach palette, 85mm lens wide open, the background melting away. Natural, unposed, editorial finish. Keep both faces, identities, skin tones and hair, and any head coverings, recognisably the same as in the attached photo(s); do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult couple for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 2,
+    "order": 1
+  },
+  {
+    "key": "couple-illustration",
+    "category": "دونفره و خانوادگی",
+    "title": "تصویرسازی دونفره‌ی دوست‌داشتنی",
+    "instructions": "یک عکس از هر دو نفر کنار هم، یا از هر نفر یک عکس جدا بگذارید.",
+    "prompt": "Draw the couple as a charming modern illustration, suited to a phone wallpaper or an anniversary gift. Vertical 4:5, both figures from the knees up standing close together, one leaning lightly on the other's shoulder, in simple tidy clothes. Clean ink outlines, flat colour shapes with light grain shading, a dusty pink and teal palette, an uncluttered background with a few hand-drawn stars and plants. Friendly, slightly simplified proportions, never a caricature. No words or letters in the picture. Keep both faces, identities, skin tones and hair, and any head coverings, recognisably the same as in the attached photo(s), translated into this medium; do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult couple for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 2,
+    "order": 2
+  },
+  {
+    "key": "family-warm-studio",
+    "category": "دونفره و خانوادگی",
+    "title": "عکس خانوادگی در آتلیه‌ی گرم",
+    "instructions": "یک عکس از همه‌ی اعضای خانواده، یا تا چهار عکس جدا بگذارید.",
+    "prompt": "Create a warm family portrait in a photographic studio. Vertical 4:5, everyone arranged close together on two gentle levels, some seated on a low wooden bench and others standing behind with a hand on a shoulder, in coordinated clothing of cream and soft brown. Textured caramel backdrop, large soft overhead light with gentle fill, every face evenly lit and in focus, 50mm lens at f/8. Keep every face, identity, skin tone and hair, and any head covering, recognisably the same as in the attached photo(s); include exactly the people shown, with children only if the attached photos show them; do not beautify beyond this brief. If no photo is attached, invent a believable fictional family of adults only, such as parents with a grown-up son and daughter. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 4,
+    "order": 3
+  },
+  {
+    "key": "family-parents",
+    "category": "دونفره و خانوادگی",
+    "title": "قاب یادگاری پدر و مادر",
+    "instructions": "یک عکس از پدر و مادر کنار هم، یا از هر کدام یک عکس جدا بگذارید.",
+    "prompt": "Create a dignified keepsake portrait of a mother and father, the kind of picture framed on a living-room wall. Vertical 4:5, the two seated side by side in a warm corner of their home, hands gently joined, dressed in their smart and modest best. Soft daylight from a window on one side, walnut furniture and the deep reds of a hand-knotted carpet behind them. Show their true age, lines and grey hair included. 85mm lens, gentle contrast, a quiet and respectful mood. Keep both faces, identities, skin tones and hair, and any head coverings, recognisably the same as in the attached photo(s); do not beautify beyond this brief. If no photo is attached, invent a believable fictional older adult couple for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 2,
+    "order": 4
+  },
+  {
+    "key": "art-hand-drawn",
+    "category": "سبک‌های هنری",
+    "title": "شخصیت انیمیشن با طراحی دستی",
+    "instructions": "یک عکس واضح از چهره‌تان بگذارید؛ برای دو نفر، عکس دوم را هم اضافه کنید.",
+    "prompt": "Redraw the subject as a character in a hand-drawn 2D animated film with soft painted backgrounds. Vertical 4:5, from the waist up on a sunlit hillside above a small village, wind moving the grass and tall summer clouds overhead. Gentle pencil-and-ink lines, flat cel colouring with delicate shading, scenery painted in gouache in fresh greens and sky blues, warm nostalgic light. Expressive but natural eyes and no exaggerated features. Keep each face, identity, skin tone and hair, and any head covering, recognisably the same as in the attached photo(s), translated into this medium; do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 2,
+    "order": 1
+  },
+  {
+    "key": "art-3d-character",
+    "category": "سبک‌های هنری",
+    "title": "شخصیت انیمیشن سه‌بعدی",
+    "instructions": "یک عکس واضح از چهره‌تان بگذارید؛ برای دو نفر، عکس دوم را هم اضافه کنید.",
+    "prompt": "Reimagine the subject as the hero of a family-friendly 3D animated feature film. Vertical 4:5, three-quarter view from the waist up, a warm confident smile, in a softly blurred cosy town square at sunset. Stylised rounded forms with slightly larger eyes, soft translucent skin, individually shaped strands of hair, fabric with visible weave. Warm key light with cool bounce, shallow depth of field, a clean polished render. Keep each face, identity, skin tone and hair, and any head covering, recognisably the same as in the attached photo(s), translated into this medium; do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 2,
+    "order": 2
+  },
+  {
+    "key": "art-pencil",
+    "category": "سبک‌های هنری",
+    "title": "طراحی با مداد",
+    "instructions": "یک عکس واضح از چهره‌تان بگذارید.",
+    "prompt": "Render the subject as a fine graphite pencil drawing on textured off-white paper. Vertical 4:5, head and shoulders, careful cross-hatching and smudged tone in the shadows, crisp dark accents around the eyes, the drawing fading into loose unfinished strokes at the edges. Graphite only, with visible paper grain and a few construction lines left in place, like a page from an accomplished portrait artist's sketchbook. Keep the face, identity, skin tone and hair, and any head covering, recognisably the same as in the attached photo, translated into this medium; do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 1,
+    "order": 3
+  },
+  {
+    "key": "art-oil",
+    "category": "سبک‌های هنری",
+    "title": "نقاشی رنگ‌روغن",
+    "instructions": "یک عکس واضح از چهره‌تان با نور خوب بگذارید.",
+    "prompt": "Paint the subject as a classical oil portrait on linen canvas. Vertical 4:5, a seated three-quarter view against a dark umber background, warm light falling from the upper left in the old-master tradition. Thick impasto in the highlights, thin glazes in the shadows, the faintest craquelure. Palette of burnt sienna, ochre, deep crimson and muted olive, with simple and dignified clothing. It should look like a real painting photographed in a gallery, with no frame. Keep the face, identity, skin tone and hair, and any head covering, recognisably the same as in the attached photo, translated into this medium; do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 1,
+    "order": 4
+  },
+  {
+    "key": "art-pop-poster",
+    "category": "سبک‌های هنری",
+    "title": "پوستر پاپ‌آرت نوستالژیک",
+    "instructions": "یک عکس بگذارید که چهره‌تان در آن بزرگ و واضح باشد.",
+    "prompt": "Turn the subject into a bold pop-art poster from the 1960s print era. Vertical 4:5, a tight head-and-shoulders view on a flat saturated background, thick black outlines and halftone dot shading. Limited palette of hot coral, mustard, turquoise and cream, with slight misregistration and aged paper texture like an old screen print. Graphic, playful and joyful. No words, letters or logos anywhere in the poster. Keep the face, identity, skin tone and hair, and any head covering, recognisably the same as in the attached photo, translated into this medium; do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 1,
+    "order": 5
+  },
+  {
+    "key": "art-sticker",
+    "category": "سبک‌های هنری",
+    "title": "استیکر بامزه از چهره‌ی شما",
+    "instructions": "یک عکس از چهره‌تان با حالتی خندان یا بامزه بگذارید.",
+    "prompt": "Create a playful die-cut sticker of the subject. A bust-length character with a slightly enlarged head, a happy expression and a small wave of the hand, drawn with thick clean outlines and bright flat colours. A wide white border follows the silhouette, with a faint drop shadow, on a plain light-grey background. Centred with a generous margin so it can be cut out. No words or letters. Keep the face, identity, skin tone and hair, and any head covering, recognisably the same as in the attached photo, translated into this medium; do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 1,
+    "order": 6
+  },
+  {
+    "key": "product-white",
+    "category": "عکس محصول",
+    "title": "عکس فروشگاهی با زمینه‌ی سفید",
+    "instructions": "یک تا سه عکس واضح از خود محصول بگذارید که برچسبش خوانا باشد.",
+    "prompt": "Create a clean e-commerce product photo on a pure white seamless background. Vertical 4:5, the product centred and filling about two-thirds of the frame, seen from a slightly raised angle. Even light from large soft boxes, with only a faint contact shadow beneath it. True-to-life colours, pin-sharp from edge to edge, the look of a 100mm macro lens, no props. Keep the product's shape, proportions, label and colours exact as in the attached photo(s), and never invent or rewrite text on the label. If no photo is attached, invent a believable fictional product with a blank, unbranded label for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 3,
+    "order": 1
+  },
+  {
+    "key": "product-marble",
+    "category": "عکس محصول",
+    "title": "چیدمان لوکس روی سنگ مرمر",
+    "instructions": "یک عکس واضح از محصولتان، مثل عطر، جواهر یا لوازم آرایشی، بگذارید.",
+    "prompt": "Create a luxury top-down flat lay on polished white marble with soft grey veins. Vertical 4:5, the product slightly off-centre with a few refined props around it: a folded silk ribbon, a thin gold tray, scattered dried petals and small glass droplets, all neatly placed with generous empty space. Soft directional daylight with long gentle shadows, a gold and warm-white palette, a 50mm lens straight overhead, magazine-quality sharpness. Keep the product's shape, proportions, label and colours exact as in the attached photo(s), and never invent or rewrite text on the label. If no photo is attached, invent a believable fictional cosmetic product with a blank, unbranded label for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 3,
+    "order": 2
+  },
+  {
+    "key": "product-lifestyle",
+    "category": "عکس محصول",
+    "title": "محصول در فضای واقعی زندگی",
+    "instructions": "یک عکس واضح از محصولتان بگذارید و اگر فضای خاصی می‌خواهید، در یادداشت بنویسید.",
+    "prompt": "Place the product in a believable everyday setting chosen to suit what it is: a sunlit kitchen counter for food or tableware, a wooden dresser for accessories, a cosy reading corner for home goods. Vertical 4:5, the product sharp in the foreground with the room softly blurred behind it and no faces in view. Morning window light, a warm natural palette, a 35mm lens at f/2.8, a candid editorial feel. Keep the product's shape, proportions, label and colours exact as in the attached photo(s), and never invent or rewrite text on the label. If no photo is attached, invent a believable fictional product with a blank, unbranded label for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 3,
+    "order": 3
+  },
+  {
+    "key": "product-food",
+    "category": "عکس محصول",
+    "title": "عکس اشتهاآور برای منو",
+    "instructions": "یک عکس از غذا یا نوشیدنی بگذارید که همه‌ی بشقاب یا لیوان در آن دیده شود.",
+    "prompt": "Create an appetising menu photograph of the dish. Vertical 4:5, seen from a 45-degree angle on a dark walnut table with a linen napkin and simple cutlery. Side light from a window, soft shadows, a natural gloss on sauces and steam where it would really rise, rich but true colours, shallow depth of field from a 60mm lens. Keep the dish's shape, ingredients, portion and colours exact as in the attached photo(s), and never invent text on any label or packaging. If no photo is attached, invent a believable fictional Persian dish, such as saffron rice with barberries and grilled kebab, for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 2,
+    "order": 4
+  },
+  {
+    "key": "product-ad",
+    "category": "عکس محصول",
+    "title": "آگهی محصول با جای خالی برای متن",
+    "instructions": "یک عکس واضح از محصولتان بگذارید؛ متن آگهی را بعداً خودتان روی تصویر می‌نویسید.",
+    "prompt": "Create a vertical 4:5 social media advert image with deliberate empty space for text to be added later. The product stands in the lower third on a smooth surface in a colour drawn from the product itself, with a soft gradient backdrop; the upper half stays clean and free of objects. Soft studio light with one crisp highlight and a bold accent shadow, a modern minimal finish. Do not add any headline, letters, numbers, logos or prices. Keep the product's shape, proportions, label and colours exact as in the attached photo(s), and never invent or rewrite text on the label. If no photo is attached, invent a believable fictional product with a blank, unbranded label for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 3,
+    "order": 5
+  },
+  {
+    "key": "fix-restore-old",
+    "category": "بهبود و بازسازی عکس",
+    "title": "بازسازی عکس قدیمی و آسیب‌دیده",
+    "instructions": "از عکس قدیمی با نور خوب و از روبه‌رو عکس بگیرید یا اسکنش کنید و بگذارید.",
+    "prompt": "Restore this old photograph as a skilled archivist would. Remove scratches, tears, creases, stains, dust and fading, and rebuild missing areas from what surrounds them. Keep the original framing, clothing, era and background, and the original black-and-white or sepia tone. Recover gentle detail in faces and fabric without a plastic look. Keep every face, identity, skin tone and hair, and any head covering, recognisably the same as in the attached photo; do not beautify or modernise beyond this brief. If no photo is attached, invent a believable fictional adult portrait from the 1950s and show it side by side, damaged on the left and restored on the right, with no labels. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 1,
+    "order": 1
+  },
+  {
+    "key": "fix-colourise",
+    "category": "بهبود و بازسازی عکس",
+    "title": "رنگی کردن عکس سیاه‌وسفید",
+    "instructions": "یک عکس سیاه‌وسفید بگذارید؛ هرچه واضح‌تر باشد، نتیجه بهتر است.",
+    "prompt": "Colourise this black-and-white photograph with natural, historically believable colour. Skin with realistic warmth and variation; fabrics, walls and foliage in muted period tones rather than saturated modern ones. Keep the contrast, grain and detail of the original and leave the framing unchanged; add nothing and remove nothing. Keep every face, identity, skin tone and hair, and any head covering, recognisably the same as in the attached photo; do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult portrait from the 1960s and show it side by side, black-and-white on the left and colourised on the right, with no labels. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 1,
+    "order": 2
+  },
+  {
+    "key": "fix-clean-phone",
+    "category": "بهبود و بازسازی عکس",
+    "title": "شفاف و تمیز کردن عکس موبایل",
+    "instructions": "همان عکس موبایلی را که می‌خواهید بهتر شود بگذارید.",
+    "prompt": "Clean up this phone photo so it looks as if it was taken on a good camera. Remove noise, blur and compression artefacts, sharpen gently, correct the white balance and exposure, recover shadows and highlights, and straighten the horizon. Keep the framing, the place, the clothing and everything in the scene as it is; nothing added and nothing removed. Keep every face, identity, skin tone and hair, and any head covering, recognisably the same as in the attached photo; do not beautify beyond this brief. If no photo is attached, invent a believable fictional snapshot of an adult in a cafe and show it side by side, dim and grainy on the left and clean on the right, with no labels. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 1,
+    "order": 3
+  },
+  {
+    "key": "fix-background",
+    "category": "بهبود و بازسازی عکس",
+    "title": "عوض کردن پس‌زمینه‌ی عکس",
+    "instructions": "یک عکس بگذارید و در یادداشت بنویسید چه پس‌زمینه‌ای می‌خواهید.",
+    "prompt": "Replace the background of this photo and leave the subject untouched. Separate the person or object cleanly, with accurate hair and edge detail, and set them in the background requested below; if none is requested, use a softly blurred sunlit garden. Match the light direction, colour temperature, shadows and perspective so the result looks truly photographed there, with a natural depth of field. Keep every face, identity, skin tone and hair, and any head covering, recognisably the same as in the attached photo; do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult standing in a sunlit garden for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 1,
+    "order": 4
+  },
+  {
+    "key": "fix-passport",
+    "category": "بهبود و بازسازی عکس",
+    "title": "عکس پرسنلی با زمینه‌ی ساده",
+    "instructions": "یک عکس از روبه‌رو با نور یکنواخت بگذارید؛ نتیجه مدرک رسمی نیست.",
+    "prompt": "Create a neat passport-style portrait on a plain, neutral, light background. Vertical format, head and top of the shoulders centred, face straight to the camera, eyes open, mouth closed, a neutral expression. Even shadowless light, no glare, plain modest clothing, natural skin texture with no retouching. This is a picture for everyday use and is not an official document: no stamps, seals, flags, numbers or text. Keep the face, identity, skin tone and hair, and any head covering, recognisably the same as in the attached photo; do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 1,
+    "order": 5
+  },
+  {
+    "key": "occasion-yalda",
+    "category": "مناسبت‌ها",
+    "title": "شب یلدا کنار کرسی",
+    "instructions": "عکس خودتان یا خانواده را بگذارید؛ بدون عکس هم یک صحنه‌ی یلدایی ساخته می‌شود.",
+    "prompt": "Create a warm portrait of Yalda night, the Persian winter-solstice gathering. Vertical 4:5, the subject sitting beside a traditional korsi, a low table under a thick patterned quilt, with bowls of pomegranate seeds, slices of watermelon, nuts and dried fruit on a hand-printed cloth, candles and an open book of poetry. Red and deep burgundy palette, candlelight as the only source, soft shadows on a plaster wall, a 35mm lens. No words or letters. Keep each face, identity, skin tone and hair, and any head covering, recognisably the same as in the attached photo(s); do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 0,
+    "maxInputs": 3,
+    "order": 1
+  },
+  {
+    "key": "occasion-nowruz",
+    "category": "مناسبت‌ها",
+    "title": "نوروز کنار سفره‌ی هفت‌سین",
+    "instructions": "عکس خودتان یا خانواده را بگذارید؛ بدون عکس هم یک صحنه‌ی نوروزی ساخته می‌شود.",
+    "prompt": "Create a fresh portrait of Nowruz, the Persian new year. Vertical 4:5, the subject in spring clothes sitting behind a beautifully laid haft-sin table: green sprouts, sweet samanu, dried senjed fruit, vinegar, red apples, garlic and sumac, with a mirror, painted eggs, hyacinths and candles. Bright morning daylight, a palette of fresh green, white and gold, a blossoming branch behind, a 35mm lens. No words or letters. Keep each face, identity, skin tone and hair, and any head covering, recognisably the same as in the attached photo(s); do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 0,
+    "maxInputs": 3,
+    "order": 2
+  },
+  {
+    "key": "occasion-birthday",
+    "category": "مناسبت‌ها",
+    "title": "عکس تولد با کیک و شمع",
+    "instructions": "یک عکس واضح از صاحب تولد بگذارید.",
+    "prompt": "Create a joyful birthday portrait. Vertical 4:5, the subject smiling behind a tall layered cake with glowing candles, paper garlands and balloons softly blurred behind them and a little confetti in the air. Warm candle glow with a pastel fill light, a palette of cream, blush and gold, a 50mm lens wide open, the feel of a happy candid moment. No names, numbers or letters on the cake or the decorations. Keep the face, identity, skin tone and hair, and any head covering, recognisably the same as in the attached photo; do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 1,
+    "order": 3
+  },
+  {
+    "key": "occasion-wedding",
+    "category": "مناسبت‌ها",
+    "title": "پرتره برای کارت عروسی",
+    "instructions": "یک عکس از عروس و داماد کنار هم، یا از هر نفر یک عکس جدا بگذارید.",
+    "prompt": "Create an elegant portrait for a wedding invitation. Vertical 4:5, the couple standing close and looking at each other in formal wedding clothes, a modest long-sleeved white gown and a dark suit, framed by a soft arch of white flowers and greenery, with generous empty space at the top for names to be added later. Diffused daylight, an ivory, sage and pale gold palette, a fine-art finish, an 85mm lens. No words or letters. Keep both faces, identities, skin tones and hair, and any head coverings, recognisably the same as in the attached photo(s); do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult couple for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 2,
+    "order": 4
+  },
+  {
+    "key": "occasion-romantic-card",
+    "category": "مناسبت‌ها",
+    "title": "کارت عاشقانه‌ی نقاشی‌شده",
+    "instructions": "یک عکس دونفره، یا از هر نفر یک عکس جدا بگذارید.",
+    "prompt": "Paint a romantic card for a couple, for Valentine's Day or an anniversary, as a soft impressionist painting. Vertical 4:5, two people fully dressed and seated close on a park bench under blossoming branches at dusk, one resting their head on the other's shoulder, tender and modest. Visible brush strokes, a rose, plum and warm gold palette, a scatter of red petals and small hand-painted hearts around the edge. No words or letters. Keep both faces, identities, skin tones and hair, and any head coverings, recognisably the same as in the attached photo(s), translated into this medium; do not beautify beyond this brief. If no photo is attached, invent a believable fictional adult couple for this scene. Create the image right away and do not ask questions. Follow any extra request below.",
+    "minInputs": 1,
+    "maxInputs": 2,
+    "order": 5
+  }
+]
