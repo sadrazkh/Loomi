@@ -118,7 +118,7 @@ const DIALOGS = { telegram: 'telegram', password: 'changePassword', dev: 'acDev'
         </span>
        </span>
       </div>
-      <button class="srow" @click="open='password'"><span class="ic"><LockKeyhole/></span><span class="txt"><b>{{ t('acPassword') }}</b><small>{{ t('acPasswordHelp') }}</small></span><ChevronRight class="chev"/></button>
+      <button class="srow" @click="open='password'"><span class="ic"><LockKeyhole/></span><span class="txt"><b>{{ t('acPassword') }}</b><small>{{ t(me?.hasPassword ? 'acPasswordHelp' : 'suSetPasswordRow') }}</small></span><ChevronRight class="chev"/></button>
       <button class="srow" @click="open='dev'"><span class="ic"><Code/></span><span class="txt"><b>{{ t('acDev') }}</b><small>{{ devLine }}</small></span><ChevronRight class="chev"/></button>
       <button class="srow phone-only" @click="go('gallery')"><span class="ic"><Images/></span><span class="txt"><b>{{ t('shMyImages') }}</b><small>{{ t('acImagesHelp') }}</small></span><ChevronRight class="chev"/></button>
       <button class="srow out" @click="action(logout)"><span class="ic"><LogOut/></span><span class="txt"><b>{{ t('shLogout') }}</b><small>{{ t('acLogoutHelp') }}</small></span><ChevronRight class="chev"/></button>
@@ -127,7 +127,7 @@ const DIALOGS = { telegram: 'telegram', password: 'changePassword', dev: 'acDev'
    </div>
   </div>
 
-  <Modal v-if="open" :title="t(DIALOGS[open])" :close-label="t('close')" :size="open==='dev' ? 'lg' : 'md'" @close="close">
+  <Modal v-if="open" :title="t(open==='password' && !me?.hasPassword ? 'suSetPassword' : DIALOGS[open])" :close-label="t('close')" :size="open==='dev' ? 'lg' : 'md'" @close="close">
    <TelegramConnect v-if="open==='telegram'" @state="tg=$event"/>
    <ChangePassword v-else-if="open==='password'" cancellable @cancel="close"/>
    <DevTools v-else-if="open==='dev'" :tokens="tokens" @reload="loadTokens"/>

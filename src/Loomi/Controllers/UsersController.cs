@@ -13,9 +13,9 @@ public record GrantCredits(int? Amount, string? Note);
 public record UpdateUser(int? DailyQuota, UserRole? Role, bool? IsDisabled);
 public record ResetPassword(string? Password);
 /// <summary>Credits is the regular balance; Packages are the ones running or waiting to start, soonest ending first.</summary>
-public record UserDto(Guid Id, string Username, UserRole Role, int DailyQuota, bool IsDisabled, DateTime CreatedAt, int UsedToday, int Credits, IReadOnlyList<PackageDto> Packages)
+public record UserDto(Guid Id, string Username, UserRole Role, int DailyQuota, bool IsDisabled, DateTime CreatedAt, int UsedToday, int Credits, IReadOnlyList<PackageDto> Packages, bool FromBot)
 {
-    public static UserDto From(AppUser u, int used, int credits = 0, IReadOnlyList<PackageDto>? packages = null) => new(u.Id, u.Username, u.Role, u.DailyQuota, u.IsDisabled, u.CreatedAt, used, credits, packages ?? []);
+    public static UserDto From(AppUser u, int used, int credits = 0, IReadOnlyList<PackageDto>? packages = null) => new(u.Id, u.Username, u.Role, u.DailyQuota, u.IsDisabled, u.CreatedAt, used, credits, packages ?? [], u.FromBot);
 }
 [ApiController, Authorize(Roles = nameof(UserRole.Owner)), Route("api/users")]
 public class UsersController(AppDbContext db, PasswordService passwords, IImageStorage storage) : ControllerBase
@@ -129,6 +129,7 @@ public class UsersController(AppDbContext db, PasswordService passwords, IImageS
         // A Telegram link outliving its user would leave a chat that the next user of that id inherits; the unique index would also refuse a fresh link.
         await db.TelegramLinks.Where(l => l.UserId == id).ExecuteDeleteAsync(ct);
         await db.LinkCodes.Where(c => c.UserId == id).ExecuteDeleteAsync(ct);
+        await db.LoginLinks.Where(l => l.UserId == id).ExecuteDeleteAsync(ct);
         // Packages have no foreign key either; one left behind would be a running package nobody can reach.
         await db.CreditPackages.Where(p => p.UserId == id).ExecuteDeleteAsync(ct);
         db.Users.Remove(user); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
