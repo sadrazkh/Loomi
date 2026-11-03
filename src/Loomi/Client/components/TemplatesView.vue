@@ -4,6 +4,7 @@ import { LayoutTemplate, SlidersHorizontal, Plus, Trash2, EyeOff, ImageOff, Load
 import Modal from './Modal.vue';
 import PhotoPicker from './PhotoPicker.vue';
 import TemplateEditor from './TemplateEditor.vue';
+import StarterCard from './StarterCard.vue';
 import ConfirmDialog from './studio/ConfirmDialog.vue';
 import { payLine } from './studio/shared.js';
 import { photoHint, photoMeta, sampleSrc, flatten } from './templates.js';
@@ -117,6 +118,7 @@ async function deleteCategory() { const c = categoryTarget.value; await action(a
   </div>
 
   <template v-if="manage">
+   <StarterCard @changed="loadManage().catch(() => {})"/>
    <section class="card" aria-labelledby="tpl-categories">
     <div class="card-head"><h2 id="tpl-categories">{{ t('stCategories') }}</h2></div>
     <p class="field-help">{{ t('stCategoriesHelp') }}</p>

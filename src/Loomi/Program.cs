@@ -107,6 +107,8 @@ builder.Services.AddScoped<GrowthSettings>();
 builder.Services.AddScoped<NewsAudience>();
 builder.Services.Configure<ReportOptions>(builder.Configuration.GetSection("Reports"));
 builder.Services.AddScoped<TemplateService>();
+builder.Services.AddScoped<StarterService>();
+builder.Services.AddHostedService<StarterSampleWorker>();
 builder.Services.AddHostedService<GenerationWorker>();
 builder.Services.AddHostedService<IdleTabWorker>();
 builder.Services.AddReverseProxy().LoadFromMemory(

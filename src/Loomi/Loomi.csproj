@@ -8,6 +8,8 @@
   <ItemGroup>
     <Content Remove="Client/**" />
     <None Remove="Client/node_modules/**" />
+    <Content Remove="Data/StarterTemplates.json" />
+    <EmbeddedResource Include="Data/StarterTemplates.json" LogicalName="Loomi.Data.StarterTemplates.json" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12"><PrivateAssets>all</PrivateAssets></PackageReference>
