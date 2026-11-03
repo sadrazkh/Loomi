@@ -227,7 +227,7 @@ public class BotPhaseTests
     {
         using var s = await SetupAsync();
         await s.Worker.RegisterCommandsAsync(default);
-        Assert.Equal(["new", "templates", "balance", "status", "cancel", "notify", "help"], s.Bot.Commands!.Select(c => c.Command));
+        Assert.Equal(["new", "templates", "balance", "status", "cancel", "notify", "web", "help"], s.Bot.Commands!.Select(c => c.Command));
         Assert.All(s.Bot.Commands!, c => Assert.True(BotMessages.LooksPersian(c.Fa) && !BotMessages.LooksPersian(c.En)));
     }
 

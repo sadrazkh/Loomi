@@ -79,7 +79,7 @@ public class UsageBotTests
 
         var before = s.Bot.Texts.Count;
         await s.Worker.HandleAsync(Text("/users", MemberChat), default);
-        Assert.Equal((MemberChat, BotMessages.Help(false)), s.Bot.Texts[^1]);
+        Assert.Equal((MemberChat, TelegramBotWorker.HelpText(false)), s.Bot.Texts[^1]);
         Assert.Equal(before + 1, s.Bot.Texts.Count);
         Assert.DoesNotContain(s.Bot.TextButtons[^1]!.SelectMany(r => r), b => b.Data.StartsWith("usr:") || b.Data.StartsWith("usage:"));
         Assert.DoesNotContain(TelegramBotWorker.Commands, c => c.Command == "users");

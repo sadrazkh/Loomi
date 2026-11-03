@@ -9,5 +9,10 @@ public class PasswordService
     /// <summary>A hash of a value nobody can supply. Checking against it costs the same as a real miss, so a wrong name and a wrong password are indistinguishable.</summary>
     private static readonly string NoPassword = Hasher.HashPassword(Nobody, Guid.NewGuid().ToString());
     public string Hash(AppUser user, string password) => Hasher.HashPassword(user, password);
-    public bool Verify(AppUser? user, string password) => Hasher.VerifyHashedPassword(user ?? Nobody, user?.PasswordHash ?? NoPassword, password) != PasswordVerificationResult.Failed && user is not null;
+    /// <summary>An account with no password yet is checked against the same stand-in and always fails, so it takes as long as anyone's wrong password.</summary>
+    public bool Verify(AppUser? user, string password)
+    {
+        var usable = user is { PasswordHash.Length: > 0 };
+        return Hasher.VerifyHashedPassword(user ?? Nobody, usable ? user!.PasswordHash : NoPassword, password) != PasswordVerificationResult.Failed && usable;
+    }
 }

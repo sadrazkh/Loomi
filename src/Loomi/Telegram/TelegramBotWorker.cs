@@ -28,6 +28,7 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
         new("status", "What is running", "کارهای در جریان"),
         new("cancel", "Stop what you are doing", "لغو کار جاری"),
         new("notify", BotMessages.Text("cmdNotify", false), BotMessages.Text("cmdNotify", true)),
+        new("web", "A one-time link to your account on the website", "لینک یک‌بارمصرف ورود به حسابتان در وب"),
         new("help", "How it works", "راهنما"),
     ];
     private readonly TelegramOptions settings = telegram.Value;
@@ -122,7 +123,14 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
         if (text.StartsWith("/start", StringComparison.OrdinalIgnoreCase))
         {
             var code = text[6..].Trim();
-            if (code.Length == 0) { await SayAsync(chat, "linkFirst", persian, ct); return; }
+            if (code.Length == 0)
+            {
+                var joining = Joining(scope, db);
+                // With sign-up open, someone who has an account and taps Start again should not be told the chat is not linked. With it closed, nothing changes.
+                if (await UserAsync(db, chat, ct) is not null && await joining.OpenAsync(ct)) await HelpAsync(chat, persian, ct);
+                else await joining.StrangerAsync(message, persian, ct);
+                return;
+            }
             var outcome = await Linking.RedeemAsync(db, code, chat, DateTime.UtcNow, ct);
             // Linked is the moment to show what the bot can do, one tap away.
             await client.SendTextAsync(chat, BotMessages.Text(outcome.Key, persian, outcome.User?.Username ?? ""), ct,
@@ -131,7 +139,7 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
         }
         // Everything past this point acts as a Loomi user, so an unlinked chat stops here and never reaches the queue.
         var user = await UserAsync(db, chat, ct);
-        if (user == null) { await SayAsync(chat, "linkFirst", persian, ct); return; }
+        if (user == null) { await Joining(scope, db).StrangerAsync(message, persian, ct); return; }
         switch (text.Split(' ')[0].ToLowerInvariant())
         {
             case "/help": await HelpAsync(chat, persian, ct); return;
@@ -140,6 +148,7 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
             case "/balance": await BalanceAsync(db, chat, user, persian, ct); return;
             case "/status": await StatusAsync(db, chat, user, persian, ct); return;
             case "/notify": await NotificationWorker.ToggleAsync(db, client, chat, user, persian, ct); return;
+            case "/web": await Joining(scope, db).WebAsync(message, user, persian, ct); return;
             // A half-finished choice is what the person most likely means to stop; running work is cancelled only when there is nothing else.
             case "/cancel": if (pending.TryRemove(chat, out _)) await SayAsync(chat, "stateCleared", persian, ct); else await CancelAsync(db, chat, user, persian, ct); return;
             // Everybody's use is the owner's to read. To anyone else it is an unknown command, and it stays out of the menu members see.
@@ -191,6 +200,8 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var user = await UserAsync(db, chat, ct);
+        // These two are for a chat with no account yet, so they come before what stops one.
+        if (data is SignupBot.Join or SignupBot.HaveAccount) { await Joining(scope, db).PressAsync(press, chat, data, user, persian, ct); return; }
         if (user == null) { await SayAsync(chat, "linkFirst", persian, ct); return; }
         var colon = data.IndexOf(':');
         var verb = colon < 0 ? data : data[..colon];
@@ -215,13 +226,18 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
     }
     /// <summary>The owner's report, speaking through this worker's own client.</summary>
     private UsageBot Usage(IServiceScope scope, AppDbContext db) =>
-        new(client, scope.ServiceProvider.GetRequiredService<UsageReport>(), db, scope.ServiceProvider.GetRequiredService<IImageStorage>());
+        new(client, scope.ServiceProvider.GetRequiredService<UsageReport>(), db, scope.ServiceProvider.GetRequiredService<IImageStorage>(), scope.ServiceProvider.GetRequiredService<Watermark>());
+    /// <summary>Signing up and the way into the web, speaking through this worker's own client.</summary>
+    private SignupBot Joining(IServiceScope scope, AppDbContext db) =>
+        new(client, db, scope.ServiceProvider.GetRequiredService<GrowthSettings>(), scope.ServiceProvider.GetRequiredService<IConfiguration>(), bot, logger);
     private static async Task<AppUser?> UserAsync(AppDbContext db, long chat, CancellationToken ct) =>
         await db.TelegramLinks.AsNoTracking().Where(l => l.ChatId == chat)
             .Join(db.Users.Where(u => !u.IsDisabled), l => l.UserId, u => u.Id, (_, u) => u).FirstOrDefaultAsync(ct);
     private Task SayAsync(long chat, string key, bool persian, CancellationToken ct) => client.SendTextAsync(chat, BotMessages.Text(key, persian), ct);
+    /// <summary>The help, with the line about /web under it, which is kept with the rest of signing up.</summary>
+    public static string HelpText(bool persian) => BotMessages.Text("help", persian) + "\n\n" + BotMessages.Text("helpWeb", persian);
     private Task HelpAsync(long chat, bool persian, CancellationToken ct) =>
-        client.SendTextAsync(chat, BotMessages.Help(persian), ct, Keys(Row(new BotButton(BotMessages.Text("btnTemplates", persian), "templates"))));
+        client.SendTextAsync(chat, HelpText(persian), ct, Keys(Row(new BotButton(BotMessages.Text("btnTemplates", persian), "templates"))));
     private async Task BalanceAsync(AppDbContext db, long chat, AppUser user, bool persian, CancellationToken ct)
     {
         var used = await db.UsedByAsync(user.Id, ct);
@@ -373,12 +389,14 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
         }
         catch (Exception ex) when (ex is InvalidOperationException or KeyNotFoundException) { await RefusedAsync(chat, persian, ex, ct); }
     }
-    /// <summary>As a file, so it arrives at the size and quality it was made; Telegram recompresses anything sent as a photo.</summary>
+    /// <summary>As a file, so it arrives at the size and quality it was made; Telegram recompresses anything sent as a photo. It is still what the person is
+    /// handed, so a gift's carries its mark like any other delivery of it.</summary>
     private async Task SendOriginalAsync(AppDbContext db, IServiceScope scope, long chat, bool persian, AppUser user, Guid id, CancellationToken ct)
     {
-        var stored = await db.Generations.AsNoTracking().Where(g => g.Id == id && g.UserId == user.Id).Select(g => g.LocalImagePath).FirstOrDefaultAsync(ct);
-        var path = stored is null ? null : scope.ServiceProvider.GetRequiredService<IImageStorage>().Resolve(stored);
-        if (path is null || !File.Exists(path)) { await SayAsync(chat, "NotFound", persian, ct); return; }
+        var stored = await db.Generations.AsNoTracking().Where(g => g.Id == id && g.UserId == user.Id).Select(g => new { g.LocalImagePath, g.PackageId }).FirstOrDefaultAsync(ct);
+        var images = scope.ServiceProvider.GetRequiredService<IImageStorage>();
+        if (stored?.LocalImagePath is not { } original || !File.Exists(images.Resolve(original))) { await SayAsync(chat, "NotFound", persian, ct); return; }
+        var path = images.Resolve(await scope.ServiceProvider.GetRequiredService<Watermark>().DeliveredAsync(db, stored.PackageId, original, ct));
         await client.SendDocumentAsync(chat, await File.ReadAllBytesAsync(path, ct), $"loomi-{id:N}{Path.GetExtension(path)}", null, ct);
     }
 
@@ -423,8 +441,17 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
         await TalkInAsync(db, chat, null, ct);
         await SayAsync(chat, "newChat", persian, ct);
     }
-    private Task RefusedAsync(long chat, bool persian, Exception ex, CancellationToken ct) =>
-        client.SendTextAsync(chat, BotMessages.Text(ex is KeyNotFoundException ? "NotFound" : ex.Message, persian, browser.Value.MaxInputs), ct);
+    private async Task RefusedAsync(long chat, bool persian, Exception ex, CancellationToken ct)
+    {
+        var said = BotMessages.Text(ex is KeyNotFoundException ? "NotFound" : ex.Message, persian, browser.Value.MaxInputs);
+        if (ex.Message is "InsufficientCredits" or "PackageLimitReached")
+        {
+            using var scope = scopes.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            said += await Joining(scope, db).WhereToBuyAsync(await UserAsync(db, chat, ct), persian, ct);
+        }
+        await client.SendTextAsync(chat, said, ct);
+    }
     /// <summary>Each photo becomes an upload of this user's, judged by its bytes like one picked in the browser. Null, having said why, when one cannot be used.</summary>
     private async Task<List<InputRef>?> InputsAsync(AppDbContext db, IServiceScope scope, long chat, bool persian, AppUser user, IReadOnlyList<string> files, CancellationToken ct)
     {
@@ -539,8 +566,10 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
             await client.SendTextAsync(chat, BotMessages.Text(moved.Status == RunStatus.Cancelled ? "Cancelled" : moved.ErrorMessage ?? "AutomationFailed", persian), ct);
             return;
         }
-        var path = scope.ServiceProvider.GetRequiredService<IImageStorage>().Resolve(moved.ImagePath);
-        if (!File.Exists(path)) { await SayAsync(chat, "InputMissing", persian, ct); return; }
+        var images = scope.ServiceProvider.GetRequiredService<IImageStorage>();
+        if (!File.Exists(images.Resolve(moved.ImagePath))) { await SayAsync(chat, "InputMissing", persian, ct); return; }
+        var package = await db.Generations.AsNoTracking().Where(g => g.Id == moved.Id).Select(g => g.PackageId).FirstOrDefaultAsync(ct);
+        var path = images.Resolve(await scope.ServiceProvider.GetRequiredService<Watermark>().DeliveredAsync(db, package, moved.ImagePath, ct));
         var said = moved.TemplateTitle is { } title
             ? BotMessages.Text("templateCaptionTitle", persian, title) + (string.IsNullOrWhiteSpace(moved.Prompt) ? "" : "\n" + moved.Prompt)
             : moved.Prompt;

@@ -100,7 +100,7 @@ onBeforeUnmount(() => { document.documentElement.style.overflow = ''; document.r
    <aside ref="panel" class="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-name">
     <header class="head">
      <span class="av av-lg" aria-hidden="true">{{ initial(u.username) }}</span>
-     <span class="who"><b id="dr-name"><bdi>{{ u.username }}</bdi></b><small>{{ t(owner ? 'shOwner' : 'shMember') }}{{ t('adSep') }}{{ tf('drSince', date(u.createdAt)) }}<template v-if="u.isDisabled">{{ t('adSep') }}{{ t('usageDisabled') }}</template></small></span>
+     <span class="who"><b id="dr-name"><bdi>{{ u.username }}</bdi></b><small>{{ t(owner ? 'shOwner' : 'shMember') }}{{ t('adSep') }}{{ tf('drSince', date(u.createdAt)) }}<template v-if="u.fromBot">{{ t('adSep') }}{{ t('suFromBot') }}</template><template v-if="u.isDisabled">{{ t('adSep') }}{{ t('usageDisabled') }}</template></small></span>
      <button ref="closer" class="btn btn-ghost btn-icon btn-sm" :aria-label="t('close')" @click="emit('close')"><X/></button>
     </header>
     <div class="mini"><div v-for="m in mini" :key="m.label"><small>{{ t(m.label) }}</small><b class="num">{{ m.value }}</b></div></div>

@@ -11,7 +11,7 @@ namespace Loomi.Controllers.V1;
 /// <summary>Messages, each a job that finishes somewhere between thirty seconds and several minutes after it was sent. A caller can ask, wait on
 /// one with a long poll, or follow it as a stream of events; all three read the same row and say the same thing.</summary>
 [Route("api/v1/messages")]
-public class MessagesController(AppDbContext db, IImageStorage storage, QueueEstimates queue, GenerationEvents events, IOptions<JsonOptions> json) : ApiV1Controller
+public class MessagesController(AppDbContext db, IImageStorage storage, QueueEstimates queue, GenerationEvents events, IOptions<JsonOptions> json, Watermark marks) : ApiV1Controller
 {
     /// <summary>How often a waiting caller looks at the row whatever it has heard. Cancelling queued work and a queue position moving announce
     /// nothing, and an announcement can fall between two reads.</summary>
@@ -78,8 +78,8 @@ public class MessagesController(AppDbContext db, IImageStorage storage, QueueEst
     public async Task<IActionResult> Image(Guid id, CancellationToken ct)
     {
         var g = await MineAsync(id, ct);
-        var path = g.LocalImagePath is null ? null : storage.Resolve(g.LocalImagePath);
-        if (path is null || !System.IO.File.Exists(path)) return NotFound(new ErrorDto("NoImage"));
+        if (g.LocalImagePath is null || !System.IO.File.Exists(storage.Resolve(g.LocalImagePath))) return NotFound(new ErrorDto("NoImage"));
+        var path = storage.Resolve(await marks.DeliveredAsync(db, g.PackageId, g.LocalImagePath, ct));
         return PhysicalFile(path, ImageStorage.ContentTypeFor(path), enableRangeProcessing: true);
     }
 

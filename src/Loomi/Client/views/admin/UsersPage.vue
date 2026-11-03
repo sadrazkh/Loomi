@@ -73,6 +73,7 @@ onBeforeUnmount(stop);
        <button class="who" :aria-label="tf('adOpenUser', u.username)" @click.stop="open(u)">
         <span class="av">{{ initial(u.username) }}</span><b class="truncate"><bdi>{{ u.username }}</bdi></b>
         <span v-if="u.role === 'Owner'" class="tag">{{ t('shOwner') }}</span>
+        <span v-if="u.fromBot" class="tag">{{ t('suFromBot') }}</span>
         <span v-if="u.isDisabled" class="pill pill-muted">{{ t('usageDisabled') }}</span>
        </button>
       </td>
