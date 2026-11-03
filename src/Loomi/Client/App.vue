@@ -59,7 +59,7 @@ const closeSearch = () => { searchOpen.value = false; };
 .toast span{flex:1}
 @media (max-width:860px){
  .shell{display:block}
- .shell :deep(.side){display:none}
+ .shell>:deep(.side){display:none}
  .service{margin:12px 16px 0}
  .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
  .in-chat .toast{bottom:calc(120px + env(safe-area-inset-bottom,0px))}

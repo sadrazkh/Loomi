@@ -30,7 +30,7 @@ async function setDaily(e) {
  box.checked = !!daily.value?.enabled;
 }
 const OWNER_SENDS = ['btOwnerAlerts', 'btOwnerReport', 'btOwnerCommands'];
-const MEMBER_SENDS = ['btMemberMake', 'btMemberReminders', 'btMemberGranted', 'btMemberBalance'];
+const MEMBER_SENDS = ['btMemberMake', 'btMemberReminders', 'btMemberGranted', 'btMemberBalance', 'btMemberNews'];
 </script>
 
 <template>
