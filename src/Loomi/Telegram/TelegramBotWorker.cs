@@ -27,6 +27,7 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
         new("balance", "Your credits", "اعتبار شما"),
         new("status", "What is running", "کارهای در جریان"),
         new("cancel", "Stop what you are doing", "لغو کار جاری"),
+        new("notify", BotMessages.Text("cmdNotify", false), BotMessages.Text("cmdNotify", true)),
         new("help", "How it works", "راهنما"),
     ];
     private readonly TelegramOptions settings = telegram.Value;
@@ -138,6 +139,7 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
             case "/templates": await ShowCategoriesAsync(db, chat, persian, ct); return;
             case "/balance": await BalanceAsync(db, chat, user, persian, ct); return;
             case "/status": await StatusAsync(db, chat, user, persian, ct); return;
+            case "/notify": await NotificationWorker.ToggleAsync(db, client, chat, user, persian, ct); return;
             // A half-finished choice is what the person most likely means to stop; running work is cancelled only when there is nothing else.
             case "/cancel": if (pending.TryRemove(chat, out _)) await SayAsync(chat, "stateCleared", persian, ct); else await CancelAsync(db, chat, user, persian, ct); return;
             // Everybody's use is the owner's to read. To anyone else it is an unknown command, and it stays out of the menu members see.
@@ -206,6 +208,7 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
             case "again": await RepeatAsync(chat, persian, id, ct); break;
             case "file": await SendOriginalAsync(db, scope, chat, persian, user, id, ct); break;
             case "new": await NewChatAsync(db, chat, persian, ct); break;
+            case "notifyoff" or "notifyon": await NotificationWorker.SetOffAsync(db, client, chat, verb == "notifyoff", persian, ct); break;
             // Pressed by a member, from a forwarded message or a hand-made query, these do nothing at all.
             case "usage" or "usr" or "uimg" when user.Role == UserRole.Owner: await Usage(scope, db).PressAsync(chat, verb, payload, persian, ct); break;
         }
@@ -218,7 +221,7 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
             .Join(db.Users.Where(u => !u.IsDisabled), l => l.UserId, u => u.Id, (_, u) => u).FirstOrDefaultAsync(ct);
     private Task SayAsync(long chat, string key, bool persian, CancellationToken ct) => client.SendTextAsync(chat, BotMessages.Text(key, persian), ct);
     private Task HelpAsync(long chat, bool persian, CancellationToken ct) =>
-        client.SendTextAsync(chat, BotMessages.Text("help", persian), ct, Keys(Row(new BotButton(BotMessages.Text("btnTemplates", persian), "templates"))));
+        client.SendTextAsync(chat, BotMessages.Help(persian), ct, Keys(Row(new BotButton(BotMessages.Text("btnTemplates", persian), "templates"))));
     private async Task BalanceAsync(AppDbContext db, long chat, AppUser user, bool persian, CancellationToken ct)
     {
         var used = await db.UsedByAsync(user.Id, ct);
