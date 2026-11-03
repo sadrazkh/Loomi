@@ -8,6 +8,7 @@
   <ItemGroup>
     <Content Remove="Client/**" />
     <None Remove="Client/node_modules/**" />
+    <EmbeddedResource Include="Assets/watermark.png" LogicalName="Loomi.Assets.watermark.png" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12"><PrivateAssets>all</PrivateAssets></PackageReference>

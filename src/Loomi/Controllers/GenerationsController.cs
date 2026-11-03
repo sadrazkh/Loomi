@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 namespace Loomi.Controllers;
 [ApiController, Authorize, Route("api/generations")]
-public class GenerationsController(AppDbContext db, GenerationService service, IImageStorage storage, QueueEstimates queue, ImagePreviews previews) : ControllerBase
+public class GenerationsController(AppDbContext db, GenerationService service, IImageStorage storage, QueueEstimates queue, ImagePreviews previews, Watermark marks) : ControllerBase
 {
     private Viewer Me => Viewer.From(User);
     /// <summary>The caller's own waiting requests: how many are ahead of each and roughly how long until its turn. The same numbers the live updates carry.</summary>
@@ -45,9 +45,10 @@ public class GenerationsController(AppDbContext db, GenerationService service, I
     {
         var g = await db.Generations.AsNoTracking().OwnedBy(Me).FirstOrDefaultAsync(x => x.Id == id, ct);
         if (g?.LocalImagePath == null) return NotFound();
-        var path = storage.Resolve(g.LocalImagePath);
-        if (!System.IO.File.Exists(path)) return NotFound();
-        if (ImagePreviews.WidthFor(w) is { } width && await previews.GetAsync(g.LocalImagePath, width, ct) is { } preview)
+        if (!System.IO.File.Exists(storage.Resolve(g.LocalImagePath))) return NotFound();
+        var delivered = await marks.DeliveredAsync(db, g.PackageId, g.LocalImagePath, ct);
+        var path = storage.Resolve(delivered);
+        if (ImagePreviews.WidthFor(w) is { } width && await previews.GetAsync(delivered, width, ct) is { } preview)
         {
             // A generation's picture never changes, so neither does a copy of it: the browser keeps it for good and never asks again.
             Response.Headers.CacheControl = "private, max-age=31536000, immutable";

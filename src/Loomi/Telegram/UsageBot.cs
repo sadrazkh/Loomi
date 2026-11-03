@@ -8,7 +8,7 @@ namespace Loomi.Telegram;
 /// <summary>The owner's usage report in a chat: the period summary, one person's figures with their latest requests, and their latest pictures. Kept out
 /// of <see cref="TelegramBotWorker"/>, which only checks that the one asking is an owner and hands the press over. Built per update with the worker's own
 /// client, so a test's fake is the one that speaks.</summary>
-public class UsageBot(ITelegramClient client, UsageReport report, AppDbContext db, IImageStorage images)
+public class UsageBot(ITelegramClient client, UsageReport report, AppDbContext db, IImageStorage images, Watermark marks)
 {
     /// <summary>How many people a summary names and offers a button for; more would bury the keyboard under names.</summary>
     public const int Listed = 10;
@@ -45,13 +45,13 @@ public class UsageBot(ITelegramClient client, UsageReport report, AppDbContext d
     private async Task ImagesAsync(long chat, Guid user, bool persian, CancellationToken ct)
     {
         var made = await db.Generations.AsNoTracking().Where(g => g.UserId == user && g.Status == RunStatus.Completed && g.LocalImagePath != null)
-            .OrderByDescending(g => g.CreatedAt).Take(Latest).Select(g => new { g.Id, g.CreatedAt, g.Prompt, g.TemplateTitle, Stored = g.LocalImagePath! }).ToListAsync(ct);
+            .OrderByDescending(g => g.CreatedAt).Take(Latest).Select(g => new { g.Id, g.CreatedAt, g.Prompt, g.TemplateTitle, g.PackageId, Stored = g.LocalImagePath! }).ToListAsync(ct);
         made.Reverse();
         var sent = 0;
         foreach (var g in made)
         {
-            var path = images.Resolve(g.Stored);
-            if (!File.Exists(path)) continue;
+            if (!File.Exists(images.Resolve(g.Stored))) continue;
+            var path = images.Resolve(await marks.DeliveredAsync(db, g.PackageId, g.Stored, ct));
             var said = Said(g.Prompt, g.TemplateTitle);
             var caption = When(g.CreatedAt, "yyyy/MM/dd HH:mm", persian) + (said.Length == 0 ? "" : "\n" + Cut(said, CaptionChars));
             await client.SendPhotoAsync(chat, await File.ReadAllBytesAsync(path, ct), $"loomi-{g.Id:N}{Path.GetExtension(path)}", caption, ct);

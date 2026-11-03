@@ -223,7 +223,7 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
     }
     /// <summary>The owner's report, speaking through this worker's own client.</summary>
     private UsageBot Usage(IServiceScope scope, AppDbContext db) =>
-        new(client, scope.ServiceProvider.GetRequiredService<UsageReport>(), db, scope.ServiceProvider.GetRequiredService<IImageStorage>());
+        new(client, scope.ServiceProvider.GetRequiredService<UsageReport>(), db, scope.ServiceProvider.GetRequiredService<IImageStorage>(), scope.ServiceProvider.GetRequiredService<Watermark>());
     /// <summary>Signing up and the way into the web, speaking through this worker's own client.</summary>
     private SignupBot Joining(IServiceScope scope, AppDbContext db) =>
         new(client, db, scope.ServiceProvider.GetRequiredService<GrowthSettings>(), scope.ServiceProvider.GetRequiredService<IConfiguration>(), bot, logger);
@@ -386,12 +386,14 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
         }
         catch (Exception ex) when (ex is InvalidOperationException or KeyNotFoundException) { await RefusedAsync(chat, persian, ex, ct); }
     }
-    /// <summary>As a file, so it arrives at the size and quality it was made; Telegram recompresses anything sent as a photo.</summary>
+    /// <summary>As a file, so it arrives at the size and quality it was made; Telegram recompresses anything sent as a photo. It is still what the person is
+    /// handed, so a gift's carries its mark like any other delivery of it.</summary>
     private async Task SendOriginalAsync(AppDbContext db, IServiceScope scope, long chat, bool persian, AppUser user, Guid id, CancellationToken ct)
     {
-        var stored = await db.Generations.AsNoTracking().Where(g => g.Id == id && g.UserId == user.Id).Select(g => g.LocalImagePath).FirstOrDefaultAsync(ct);
-        var path = stored is null ? null : scope.ServiceProvider.GetRequiredService<IImageStorage>().Resolve(stored);
-        if (path is null || !File.Exists(path)) { await SayAsync(chat, "NotFound", persian, ct); return; }
+        var stored = await db.Generations.AsNoTracking().Where(g => g.Id == id && g.UserId == user.Id).Select(g => new { g.LocalImagePath, g.PackageId }).FirstOrDefaultAsync(ct);
+        var images = scope.ServiceProvider.GetRequiredService<IImageStorage>();
+        if (stored?.LocalImagePath is not { } original || !File.Exists(images.Resolve(original))) { await SayAsync(chat, "NotFound", persian, ct); return; }
+        var path = images.Resolve(await scope.ServiceProvider.GetRequiredService<Watermark>().DeliveredAsync(db, stored.PackageId, original, ct));
         await client.SendDocumentAsync(chat, await File.ReadAllBytesAsync(path, ct), $"loomi-{id:N}{Path.GetExtension(path)}", null, ct);
     }
 
@@ -561,8 +563,10 @@ public class TelegramBotWorker(IServiceScopeFactory scopes, ITelegramClient clie
             await client.SendTextAsync(chat, BotMessages.Text(moved.Status == RunStatus.Cancelled ? "Cancelled" : moved.ErrorMessage ?? "AutomationFailed", persian), ct);
             return;
         }
-        var path = scope.ServiceProvider.GetRequiredService<IImageStorage>().Resolve(moved.ImagePath);
-        if (!File.Exists(path)) { await SayAsync(chat, "InputMissing", persian, ct); return; }
+        var images = scope.ServiceProvider.GetRequiredService<IImageStorage>();
+        if (!File.Exists(images.Resolve(moved.ImagePath))) { await SayAsync(chat, "InputMissing", persian, ct); return; }
+        var package = await db.Generations.AsNoTracking().Where(g => g.Id == moved.Id).Select(g => g.PackageId).FirstOrDefaultAsync(ct);
+        var path = images.Resolve(await scope.ServiceProvider.GetRequiredService<Watermark>().DeliveredAsync(db, package, moved.ImagePath, ct));
         var said = moved.TemplateTitle is { } title
             ? BotMessages.Text("templateCaptionTitle", persian, title) + (string.IsNullOrWhiteSpace(moved.Prompt) ? "" : "\n" + moved.Prompt)
             : moved.Prompt;
