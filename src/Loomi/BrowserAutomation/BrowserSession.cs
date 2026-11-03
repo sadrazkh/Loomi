@@ -24,6 +24,11 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
     /// this every check on it simply finds nothing and the run waited out its whole timeout while the picture sat finished in the conversation.</summary>
     private volatile bool crashed;
     private const int MaxRecoveries = 2;
+    /// <summary>Runs since the page was last loaded, and when the last one ended: what decides that a tab has grown enough to load afresh, or sat long enough to clean up.</summary>
+    private int runsOnPage;
+    private DateTime lastUsed = DateTime.UtcNow;
+    /// <summary>Set the moment the prompt is handed to the site. From here on the site may have taken it, so a dead tab can no longer simply start over.</summary>
+    private bool promptGone;
     public bool Busy => gate.CurrentCount == 0;
     /// <summary>The last state observed, without touching the page, so listing accounts costs no browser traffic.</summary>
     public string State => page is null or { IsClosed: true } ? "Disconnected" : state;
@@ -92,6 +97,7 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
         page = await context!.NewPageAsync();
         Watch(page);
         crashed = false;
+        runsOnPage = 1;
     }
     private async Task EnsureAsync()
     {
@@ -111,6 +117,7 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
         page = context.Pages.FirstOrDefault() ?? await context.NewPageAsync();
         Watch(page);
         crashed = false;
+        runsOnPage = 0;
         await NavigateAsync("https://chatgpt.com/");
         await SettleAsync();
     }
@@ -146,9 +153,58 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
         }
         catch (PlaywrightException) { state = "Disconnected"; }
     }
+    /// <summary>A tab that dies before the prompt has gone has cost nothing but time, so the run starts over, once, in a new tab; the 2 November failure was
+    /// exactly that, a tab the kernel killed between requests. Never once send has been pressed: the site may have taken the prompt, and it would go twice.</summary>
     public async Task<BrowserResult> RunAsync(Operation operation, string prompt, IReadOnlyList<string> inputs, string? conversation, ReportStatus report, CancellationToken ct, IReadOnlySet<string>? knownImages = null)
     {
         await gate.WaitAsync(ct);
+        try
+        {
+            try { return await RunInTabAsync(operation, prompt, inputs, conversation, report, ct, knownImages); }
+            catch (Exception e) when (crashed && !promptGone && e is not OperationCanceledException && !ct.IsCancellationRequested)
+            {
+                logger?.LogWarning("The ChatGPT tab died before the prompt went; starting the run again in a new one");
+                return await RunInTabAsync(operation, prompt, inputs, conversation, report, ct, knownImages);
+            }
+        }
+        finally { lastUsed = DateTime.UtcNow; gate.Release(); }
+    }
+    /// <summary>Takes a tab nobody has used for a while back to a clean home page, so a conversation full of pictures does not sit in memory through the
+    /// night. One that died in the meantime is brought back, rather than leaving the account showing as disconnected until the next person pays for the
+    /// launch. Done once per quiet stretch, and never to a tab at work.</summary>
+    public async Task TrimIfIdleAsync(CancellationToken ct)
+    {
+        if (context == null || (runsOnPage == 0 && !crashed) || DateTime.UtcNow - lastUsed < TimeSpan.FromSeconds(settings.IdleTrimSeconds) || !await gate.WaitAsync(0, ct)) return;
+        try
+        {
+            if (crashed) await EnsureAsync();
+            else if (page is { IsClosed: false }) { await NavigateAsync("https://chatgpt.com/"); await SettleAsync(); }
+            else return;
+            runsOnPage = 0;
+            await DetectAsync();
+            logger?.LogInformation("An idle ChatGPT tab went back to a clean page");
+        }
+        catch (Exception e) when (e is PlaywrightException or TimeoutException) { logger?.LogInformation("An idle ChatGPT tab could not be cleaned up ({Type})", e.GetType().Name); }
+        finally { gate.Release(); }
+    }
+    /// <summary>Whether to load the page afresh rather than use it where it stands. Worth the load only when the tab has grown: the count applies to new
+    /// chats, each of which leaves the last one in the page, and the heap to any run. A browser that does not report its heap is judged by the count alone.</summary>
+    private async Task<bool> OutgrownAsync(bool continuing)
+    {
+        if (page is not { IsClosed: false } || crashed) return false;
+        if (!continuing && runsOnPage >= settings.RunsPerLoad) { logger?.LogInformation("Loading the page afresh after {Runs} runs on it", runsOnPage); return true; }
+        try
+        {
+            var heap = await page.EvaluateAsync<double>("() => performance.memory?.usedJSHeapSize ?? 0") / (1024 * 1024);
+            if (heap < settings.HeapLimitMb) return false;
+            logger?.LogInformation("Loading the page afresh with {Heap:0} MB in its heap", heap);
+            return true;
+        }
+        catch (Exception e) when (e is PlaywrightException or TimeoutException) { return false; }
+    }
+    private async Task<BrowserResult> RunInTabAsync(Operation operation, string prompt, IReadOnlyList<string> inputs, string? conversation, ReportStatus report, CancellationToken ct, IReadOnlySet<string>? knownImages)
+    {
+        promptGone = false;
         var step = "opening the browser";
         var clock = new RunClock();
         // One line per finished run saying where its time went, so "it is slow" can be answered from the log rather than guessed at.
@@ -171,7 +227,7 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             // The tab is used where it stands when it already shows what this run needs: the same conversation for a follow-up, or a fresh chat one
             // click away for a new one. Loading the page again took 10 to 16 seconds for the home page and 25 to 55 for a conversation, which the site
             // fetches whole, earlier pictures and all; a follow-up to the picture just made paid that every time for a page that was already there.
-            var kept = continuing ? await ShowsConversationAsync(conversation!) : await FreshChatInPlaceAsync(ct);
+            var kept = !await OutgrownAsync(continuing) && (continuing ? await ShowsConversationAsync(conversation!) : await FreshChatInPlaceAsync(ct));
             if (!kept)
             {
                 // One allowance for the whole opening, the address and the box together, so a slow load is not granted it twice.
@@ -180,7 +236,9 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
                 await NavigateAsync(continuing ? conversation! : "https://chatgpt.com/", allowance);
                 step = "waiting for the message box";
                 await Visible($"{settings.Selectors.Composer}, {settings.Selectors.QuestionForm}").First.WaitForAsync(new() { Timeout = (float)Math.Max(1000, (opened - DateTime.UtcNow).TotalMilliseconds) });
+                runsOnPage = 0;
             }
+            runsOnPage++;
             clock.Mark(kept ? "page kept" : "page loaded");
             if (continuing && !IsConversation(page!.Url)) throw new InvalidOperationException("ConversationNotSaved");
             // A conversation that was already on screen has long finished drawing its earlier turns.
@@ -218,6 +276,7 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
                 step = "answering the question";
                 var field = Visible(settings.Selectors.QuestionForm).First.Locator(settings.Selectors.QuestionInput).First;
                 await field.FillAsync(prompt);
+                promptGone = true;
                 await field.PressAsync("Enter");
             }
             else
@@ -225,6 +284,7 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
                 step = "typing the message";
                 await Visible(settings.Selectors.Composer).First.FillAsync(prompt);
                 step = "pressing send";
+                promptGone = true;
                 await Visible(settings.Selectors.Send).First.ClickAsync();
             }
             step = "waiting for the answer";
@@ -382,7 +442,6 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
             await RecordFailureAsync(step, ex);
             throw;
         }
-        finally { gate.Release(); }
     }
     private static bool SamePage(string a, string b) => Uri.TryCreate(a, UriKind.Absolute, out var x) && Uri.TryCreate(b, UriKind.Absolute, out var y)
         && x.Host == y.Host && x.AbsolutePath.TrimEnd('/') == y.AbsolutePath.TrimEnd('/');
@@ -507,8 +566,8 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
     /// the site adding each to its attachments. Either way the run waits until every file shows its remove control and nothing is still uploading.</summary>
     private async Task AttachAsync(IReadOnlyList<string> inputs, CancellationToken ct)
     {
-        var input = page!.Locator(settings.Selectors.FileInput);
-        if (await input.CountAsync() == 0) await page.Locator(settings.Selectors.AttachmentMenu).First.ClickAsync();
+        var input = await FileInputsAsync();
+        if (await input.CountAsync() == 0) await Visible(settings.Selectors.AttachmentMenu).First.ClickAsync();
         var multiple = await input.First.EvaluateAsync<bool>("el => el.multiple");
         List<string[]> batches = multiple ? [inputs.ToArray()] : [.. inputs.Select(path => new[] { path })];
         // Counted from what is already on screen rather than from zero: an absolute target is met on the spot by somebody else's leftovers, and a
@@ -517,11 +576,19 @@ public sealed class BrowserSession(string directory, IOptions<BrowserOptions> op
         foreach (var batch in batches)
         {
             // Located afresh each time: the site may replace its input after a selection.
-            await page.Locator(settings.Selectors.FileInput).First.SetInputFilesAsync(batch);
+            await (await FileInputsAsync()).First.SetInputFilesAsync(batch);
             attached += batch.Length;
             await WaitForCountAsync(settings.Selectors.UploadReady, attached, ct);
         }
-        await page.Locator(settings.Selectors.UploadBusy).First.WaitForAsync(new() { State = WaitForSelectorState.Hidden, Timeout = settings.UploadTimeoutMs });
+        await page!.Locator(settings.Selectors.UploadBusy).First.WaitForAsync(new() { State = WaitForSelectorState.Hidden, Timeout = settings.UploadTimeoutMs });
+    }
+    /// <summary>The file inputs of the message box on screen. A chat started in place leaves the previous chat's whole form in the page, hidden and ahead of
+    /// the new one, so the page's first input belonged to that hidden box: on the live site the file went there, nothing showed here, and every new chat
+    /// with a picture ended as UploadFailed. A box outside any form has only the page's inputs to go by.</summary>
+    private async Task<ILocator> FileInputsAsync()
+    {
+        var own = Visible($"{settings.Selectors.Composer}, {settings.Selectors.QuestionForm}").First.Locator("xpath=ancestor-or-self::form[1]").Locator(settings.Selectors.FileInput);
+        return await own.CountAsync() > 0 ? own : page!.Locator(settings.Selectors.FileInput);
     }
     /// <summary>The question the site is holding the conversation on, or null. Its own controls (the field, Skip, attachments) are not part of it.</summary>
     private async Task<string?> QuestionAsync()

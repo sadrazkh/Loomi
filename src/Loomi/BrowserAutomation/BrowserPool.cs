@@ -14,6 +14,7 @@ public sealed class BrowserPool(IOptions<BrowserOptions> options, IConfiguration
     public bool IsBusy(Guid account) => sessions.TryGetValue(account, out var session) && session.Busy;
     public string StateOf(Guid account) => sessions.TryGetValue(account, out var session) ? session.State : "Disconnected";
     public Task<string?> DesktopUrlAsync() => BrowserSession.DesktopUrlAsync(options.Value);
+    public async Task TrimIdleAsync(CancellationToken ct) { foreach (var session in sessions.Values) await session.TrimIfIdleAsync(ct); }
     public async Task DiscardAsync(Guid account) { if (sessions.TryRemove(account, out var session)) await session.DisposeAsync(); }
     public async ValueTask DisposeAsync() { foreach (var account in sessions.Keys) await DiscardAsync(account); }
 }

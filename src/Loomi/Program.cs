@@ -106,6 +106,7 @@ builder.Services.AddScoped<GrowthSettings>();
 builder.Services.Configure<ReportOptions>(builder.Configuration.GetSection("Reports"));
 builder.Services.AddScoped<TemplateService>();
 builder.Services.AddHostedService<GenerationWorker>();
+builder.Services.AddHostedService<IdleTabWorker>();
 builder.Services.AddReverseProxy().LoadFromMemory(
     [new RouteConfig { RouteId = "desktop", ClusterId = "desktop", Match = new() { Path = "/desktop/{**rest}" }, Transforms = [new Dictionary<string,string> { ["PathRemovePrefix"] = "/desktop" }, new Dictionary<string,string> { ["RequestHeaderRemove"] = "Cookie" }] }],
     [new ClusterConfig { ClusterId = "desktop", Destinations = new Dictionary<string,DestinationConfig> { ["local"] = new() { Address = $"http://127.0.0.1:{builder.Configuration.GetValue("Browser:DesktopPort", 6080)}/" } } }]);

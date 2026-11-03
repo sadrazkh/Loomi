@@ -21,6 +21,15 @@ public class BrowserOptions
     /// <summary>How long one look at the page may take while waiting for an answer before the tab is taken for hung and reopened. A tab the kernel
     /// killed for memory never answered at all, and held its account for good.</summary>
     public int HungSeconds { get; set; } = 90;
+    /// <summary>How many runs one loaded page takes before the next new chat loads the site afresh. A chat started in place leaves the previous one in the
+    /// page, hidden: on the live site one short turn and a new chat took the tab's script heap from 97 MB to 250. Follow-ups are not counted against this,
+    /// since loading a conversation is what costs a follow-up most.</summary>
+    public int RunsPerLoad { get; set; } = 5;
+    /// <summary>How large the tab's script heap may be, in MB, before the next run of any kind loads the page afresh instead of using it where it stands.</summary>
+    public int HeapLimitMb { get; set; } = 500;
+    /// <summary>How long a tab that has worked may sit unused before it goes back to a clean home page, freeing what its conversations hold. The kernel has
+    /// killed a tab on the live server with no run anywhere near it. A follow-up after this long pays for loading its conversation.</summary>
+    public int IdleTrimSeconds { get; set; } = 900;
     /// <summary>How long to let the site render before judging the connection state.</summary>
     public int SettleTimeoutMs { get; set; } = 15000;
     public int GenerationTimeoutSeconds { get; set; } = 600;
