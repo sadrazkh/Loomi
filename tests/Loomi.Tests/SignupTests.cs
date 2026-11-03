@@ -734,4 +734,117 @@ public class SignupTests
         await s.Worker.HandleAsync(Text("a lighthouse"), default);
         Assert.Equal(BotMessages.Text("InsufficientCredits", false), s.Bot.LastText);
     }
+
+    // ---- The day's limit on answers in words ----
+
+    /// <summary>Requests already behind an account, all ended the same way.</summary>
+    private static Task SeedAsync(AppFactory factory, Guid user, RunStatus ended, int count, DateTime? at = null) => WithDbAsync(factory, async db =>
+    {
+        var project = new ImageProject { UserId = user, Title = "earlier" };
+        db.Projects.Add(project);
+        for (var i = 0; i < count; i++)
+            db.Generations.Add(new Generation { ProjectId = project.Id, UserId = user, Prompt = "hello", Provider = Provider.ChatGPT, Operation = Operation.Generate, Status = ended, CreatedAt = at ?? DateTime.UtcNow });
+        return await db.SaveChangesAsync();
+    });
+    private static Task<int> WaitingAsync(AppFactory factory, Guid user) => WithDbAsync(factory, db => db.Generations.CountAsync(g => g.UserId == user && g.Status == RunStatus.Queued));
+
+    [Theory]
+    [InlineData(RunStatus.Answered, GrowthSettings.DefaultSignupDailyWords, true)]
+    [InlineData(RunStatus.Answered, GrowthSettings.DefaultSignupDailyWords - 1, false)]
+    [InlineData(RunStatus.Completed, 30, false)]
+    [InlineData(RunStatus.Failed, 30, false)]
+    [InlineData(RunStatus.Cancelled, 30, false)]
+    public async Task Only_answers_in_words_count_towards_the_limit_of_a_bot_made_account(RunStatus ended, int earlier, bool refused)
+    {
+        using var s = await SetupAsync();
+        await s.Worker.HandleCallbackAsync(Press("signup"), default);
+        var user = await SignedUpAsync(s.Factory);
+        await SeedAsync(s.Factory, user.Id, ended, earlier);
+
+        await s.Worker.HandleAsync(Text("a lighthouse"), default);
+
+        Assert.Equal(refused ? 0 : 1, await WaitingAsync(s.Factory, user.Id));
+        if (refused) Assert.Equal(BotMessages.Text("DailyWordsReached", false), s.Bot.LastText);
+    }
+
+    [Fact]
+    public async Task The_limit_on_answers_in_words_starts_again_each_day_and_says_so_in_both_languages()
+    {
+        using var s = await SetupAsync();
+        await s.Worker.HandleCallbackAsync(Press("signup"), default);
+        var user = await SignedUpAsync(s.Factory);
+        await SeedAsync(s.Factory, user.Id, RunStatus.Answered, 50, Quota.Midnight().AddMinutes(-1));
+
+        await s.Worker.HandleAsync(Text("a lighthouse"), default);
+
+        Assert.Equal(1, await WaitingAsync(s.Factory, user.Id));
+        Assert.True(BotMessages.LooksPersian(BotMessages.Text("DailyWordsReached", true)));
+        Assert.False(BotMessages.LooksPersian(BotMessages.Text("DailyWordsReached", false)));
+    }
+
+    [Theory]
+    [InlineData("1", 1, true)]
+    [InlineData("0", 50, false)]
+    public async Task The_owner_sets_the_limit_on_answers_in_words_and_zero_means_none(string limit, int earlier, bool refused)
+    {
+        using var s = await SetupAsync();
+        await SetAsync(s.Factory, GrowthSettings.SignupDailyWords, limit);
+        await s.Worker.HandleCallbackAsync(Press("signup"), default);
+        var user = await SignedUpAsync(s.Factory);
+        await SeedAsync(s.Factory, user.Id, RunStatus.Answered, earlier);
+
+        await s.Worker.HandleAsync(Text("a lighthouse"), default);
+
+        Assert.Equal(refused ? 0 : 1, await WaitingAsync(s.Factory, user.Id));
+    }
+
+    [Fact]
+    public async Task An_account_made_by_hand_has_no_limit_on_answers_in_words()
+    {
+        using var s = await SetupAsync();
+        var sara = new AppUser { Username = "sara", NormalizedUsername = "sara" };
+        await WithDbAsync(s.Factory, async db =>
+        {
+            var now = DateTime.UtcNow;
+            db.Users.Add(sara); db.TelegramLinks.Add(new TelegramLink { UserId = sara.Id, ChatId = Chat });
+            db.CreditPackages.Add(new CreditPackage { UserId = sara.Id, Kind = PackageKind.Credits, Name = "paid", Amount = 100, StartsAt = now.AddMinutes(-1), EndsAt = now.AddDays(1) });
+            return await db.SaveChangesAsync();
+        });
+        await SeedAsync(s.Factory, sara.Id, RunStatus.Answered, 50);
+
+        await s.Worker.HandleAsync(Text("a lighthouse"), default);
+
+        Assert.Equal(1, await WaitingAsync(s.Factory, sara.Id));
+    }
+
+    [Fact]
+    public async Task The_limit_on_answers_in_words_holds_on_the_web_too_and_leaves_no_empty_chat()
+    {
+        using var s = await SetupAsync();
+        var (user, client) = await MemberOnTheWebAsync(s);
+        using var _ = client;
+        await SeedAsync(s.Factory, user.Id, RunStatus.Answered, GrowthSettings.DefaultSignupDailyWords);
+
+        var refused = await client.PostAsJsonAsync("/api/projects/start", new { prompt = "a lighthouse" });
+
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        Assert.Equal("DailyWordsReached", (await refused.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+        Assert.Equal(1, await WithDbAsync(s.Factory, db => db.Projects.CountAsync(p => p.UserId == user.Id)));
+    }
+
+    [Fact]
+    public async Task The_owner_reads_and_changes_the_limit_on_answers_in_words_within_its_range()
+    {
+        using var factory = new AppFactory();
+        using var owner = await UserAdminTests.OwnerSessionAsync(factory);
+        Assert.Equal(GrowthSettings.DefaultSignupDailyWords, (await owner.GetFromJsonAsync<JsonElement>("/api/signup/settings")).GetProperty("dailyWords").GetInt32());
+
+        var put = await owner.PutAsJsonAsync("/api/signup/settings", new { dailyWords = 3 });
+        Assert.Equal(HttpStatusCode.OK, put.StatusCode);
+        Assert.Equal(3, (await put.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("dailyWords").GetInt32());
+
+        foreach (var outside in new[] { -1, 1001 })
+            Assert.Equal(HttpStatusCode.BadRequest, (await owner.PutAsJsonAsync("/api/signup/settings", new { dailyWords = outside })).StatusCode);
+        Assert.Equal(3, (await owner.GetFromJsonAsync<JsonElement>("/api/signup/settings")).GetProperty("dailyWords").GetInt32());
+    }
 }

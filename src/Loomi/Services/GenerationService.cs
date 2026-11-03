@@ -6,7 +6,7 @@ using Loomi.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 namespace Loomi.Services;
-public class GenerationService(AppDbContext db, IOptions<BrowserOptions> browser)
+public class GenerationService(AppDbContext db, IOptions<BrowserOptions> browser, GrowthSettings growth)
 {
     /// <summary>A title for a project that starts from a message rather than a name: the message's opening words.</summary>
     public static string TitleFrom(string prompt)
@@ -69,6 +69,7 @@ public class GenerationService(AppDbContext db, IOptions<BrowserOptions> browser
         if (await db.Generations.AsQueryable().Unfinished().CountAsync(ct) >= 25) throw new InvalidOperationException("QueueFull");
         // Refused here rather than silently parked in the queue: a limit is only actionable while the person who hit it is still looking at it.
         if (await db.RemainingAsync(project.UserId, ct) == 0) throw new InvalidOperationException("QuotaExceeded");
+        if (await db.OutOfWordsAsync(growth, project.UserId, ct)) throw new InvalidOperationException("DailyWordsReached");
         // Work for a provider no account serves would wait for ever, so it is refused while the person can still pick another. A workspace with no
         // accounts at all is a different thing: nothing is connected yet, the queue holds the work, and /api/auth/status is what explains the wait.
         if (await db.Accounts.AnyAsync(a => a.IsEnabled, ct) && !await db.Accounts.AnyAsync(a => a.IsEnabled && a.Provider == provider, ct)) throw new InvalidOperationException("NoAccount");

@@ -18,10 +18,13 @@ export default {
   suGiftHelp:'For each new account, {0} to {1}.',
   suLimit:'New accounts a day',
   suLimitHelp:'{0} to {1}. Past it the bot asks people to come back tomorrow.',
+  suWords:'Answers in words a day, per account',
+  suWordsHelp:'{0} to {1}, and {0} means no limit. Answers in words are free, so without a limit the bot works as a free ChatGPT. Pictures are not limited here; they are paid for.',
+  DailyWordsReached:'This service is for making pictures, and you have reached today’s limit of answers in words. You can carry on tomorrow. No credits were taken.',
   suToday:'Signed up today: {0} of {1}',
   suCost:'Each gift image uses the daily capacity of your ChatGPT accounts, like any other image. At these numbers, each day’s new accounts can take up to {0} images of it.',
   suFromBot:'From the bot',
-  InvalidSignupSettings:'Gift images go from 0 to 50, and new accounts a day from 0 to 1,000.'
+  InvalidSignupSettings:'Gift images go from 0 to 50, and new accounts and answers in words a day from 0 to 1,000.'
  },
  fa: {
   suSigningIn:'در حال ورود…',
@@ -41,9 +44,12 @@ export default {
   suGiftHelp:'برای هر حساب تازه، از {0} تا {1}.',
   suLimit:'حساب تازه در روز',
   suLimitHelp:'از {0} تا {1}. بیشتر از آن، ربات می‌گوید فردا بیایند.',
+  suWords:'جواب متنی در روز برای هر حساب',
+  suWordsHelp:'از {0} تا {1}؛ {0} یعنی بدون سقف. جواب متنی رایگان است و بدون سقف، ربات مثل یک ChatGPT رایگان کار می‌کند. تصویرها اینجا سقفی ندارند، چون هزینه‌شان پرداخت می‌شود.',
+  DailyWordsReached:'این سرویس برای ساخت تصویر است و جواب‌های متنی امروزتان به سقف رسیده است. فردا می‌توانید ادامه بدهید. اعتباری از شما کم نشد.',
   suToday:'ثبت‌نام‌های امروز: {0} از {1}',
   suCost:'هر تصویر هدیه مثل هر تصویر دیگری از ظرفیت روزانه‌ی حساب‌های ChatGPT شما خرج می‌شود. با این عددها، حساب‌های تازه‌ی هر روز تا {0} تصویر از آن را می‌گیرند.',
   suFromBot:'از ربات',
-  InvalidSignupSettings:'تصویر هدیه باید بین ۰ تا ۵۰ و حساب تازه در روز بین ۰ تا ۱۰۰۰ باشد.'
+  InvalidSignupSettings:'تصویر هدیه باید بین ۰ تا ۵۰، و حساب تازه و جواب متنی در روز بین ۰ تا ۱۰۰۰ باشند.'
  }
 };

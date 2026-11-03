@@ -36,5 +36,8 @@ public static partial class BotMessages
         ["webPrivateOnly"] = ("Send /web in your private chat with me: the link signs in whoever opens it.", "فرمان /web را در گفتگوی خصوصی با من بفرستید؛ این لینک هر کسی را که بازش کند وارد می‌کند."),
         // Added under "not enough credits" for an account made here, once the owner has said where to buy.
         ["signupWhereToBuy"] = ("To buy more: {0}", "برای خرید: {0}"),
+        // An answer in words is free, so an account made here gets so many a day.
+        ["DailyWordsReached"] = ("This service is for making pictures, and you have reached today's limit of answers in words. You can carry on tomorrow. No credits were taken.",
+                                 "این سرویس برای ساخت تصویر است و جواب‌های متنی امروزتان به سقف رسیده است. فردا می‌توانید ادامه بدهید. اعتباری از شما کم نشد."),
     };
 }

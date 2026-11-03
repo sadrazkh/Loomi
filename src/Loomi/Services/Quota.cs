@@ -22,4 +22,14 @@ public static class Quota
     public static async Task<int?> RemainingAsync(this AppDbContext db, Guid user, CancellationToken ct) =>
         await db.Users.AsNoTracking().Where(u => u.Id == user).Select(u => (int?)u.DailyQuota).FirstOrDefaultAsync(ct) is int quota and > 0
             ? Math.Max(0, quota - await db.UsedByAsync(user, ct)) : null;
+    /// <summary>An answer in words costs nothing, which is right for someone who asked for a picture and got a question back. For an account anybody can make
+    /// in the bot, it would also be a free ChatGPT for as long as they hold the price of one picture, so those accounts get so many a day. Counted apart from
+    /// the quota, which leaves these answers out on purpose, and only these: pictures are already paid for, so a customer who makes many is never stopped.</summary>
+    public static async Task<bool> OutOfWordsAsync(this AppDbContext db, GrowthSettings growth, Guid user, CancellationToken ct)
+    {
+        if (!await db.Users.AsNoTracking().AnyAsync(u => u.Id == user && u.FromBot, ct)) return false;
+        var limit = await growth.IntAsync(GrowthSettings.SignupDailyWords, GrowthSettings.DefaultSignupDailyWords, ct);
+        var since = Midnight();
+        return limit > 0 && await db.Generations.AsNoTracking().CountAsync(g => g.UserId == user && g.CreatedAt >= since && g.Status == RunStatus.Answered, ct) >= limit;
+    }
 }

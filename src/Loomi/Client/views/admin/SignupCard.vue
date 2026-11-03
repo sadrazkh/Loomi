@@ -2,16 +2,17 @@
 import { ref, computed, onMounted } from 'vue';
 import { Gift, Send } from 'lucide-vue-next';
 import { t, tf, api } from '../../core';
-// Whether strangers may sign up in the bot, what they start with, and how many a day: what a gift costs is the ChatGPT accounts' daily capacity, so it is said here.
+// Whether strangers may sign up in the bot, what they start with, how many a day, and how many free answers in words each gets: what a gift costs is the
+// ChatGPT accounts' daily capacity, so it is said here.
 const MAX_GIFT = 50, MAX_LIMIT = 1000;
-const s = ref(null), gift = ref(0), limit = ref(0), saving = ref(false), error = ref('');
+const s = ref(null), gift = ref(0), limit = ref(0), words = ref(0), saving = ref(false), error = ref('');
 onMounted(async () => {
- try { s.value = await api('/api/signup/settings'); gift.value = s.value.giftImages; limit.value = s.value.dailyLimit; }
+ try { s.value = await api('/api/signup/settings'); gift.value = s.value.giftImages; limit.value = s.value.dailyLimit; words.value = s.value.dailyWords; }
  catch { s.value = false; }
 });
 const inRange = (v, max) => String(v).trim() !== '' && Number.isInteger(Number(v)) && Number(v) >= 0 && Number(v) <= max;
-const valid = computed(() => inRange(gift.value, MAX_GIFT) && inRange(limit.value, MAX_LIMIT));
-const dirty = computed(() => !!s.value && (Number(gift.value) !== s.value.giftImages || Number(limit.value) !== s.value.dailyLimit));
+const valid = computed(() => inRange(gift.value, MAX_GIFT) && inRange(limit.value, MAX_LIMIT) && inRange(words.value, MAX_LIMIT));
+const dirty = computed(() => !!s.value && (Number(gift.value) !== s.value.giftImages || Number(limit.value) !== s.value.dailyLimit || Number(words.value) !== s.value.dailyWords));
 async function save(changes) {
  if (saving.value) return; saving.value = true; error.value = '';
  try { s.value = await api('/api/signup/settings', 'PUT', changes); }
@@ -20,7 +21,7 @@ async function save(changes) {
 }
 // Whatever the server kept is put back in the box, so a refused change does not leave the switch showing something that is not so.
 async function setOpen(e) { const box = e.target; await save({ open: box.checked }); box.checked = !!s.value?.open; }
-const saveNumbers = () => valid.value && dirty.value && save({ giftImages: Number(gift.value), dailyLimit: Number(limit.value) });
+const saveNumbers = () => valid.value && dirty.value && save({ giftImages: Number(gift.value), dailyLimit: Number(limit.value), dailyWords: Number(words.value) });
 </script>
 
 <template>
@@ -36,6 +37,7 @@ const saveNumbers = () => valid.value && dirty.value && save({ giftImages: Numbe
     <div class="nums">
      <div class="field"><label for="su-gift">{{ t('suGift') }}</label><input id="su-gift" v-model="gift" class="input num" type="number" min="0" :max="MAX_GIFT" required :aria-invalid="!inRange(gift, MAX_GIFT)"><span class="field-help">{{ tf('suGiftHelp', 0, MAX_GIFT) }}</span></div>
      <div class="field"><label for="su-limit">{{ t('suLimit') }}</label><input id="su-limit" v-model="limit" class="input num" type="number" min="0" :max="MAX_LIMIT" required :aria-invalid="!inRange(limit, MAX_LIMIT)"><span class="field-help">{{ tf('suLimitHelp', 0, MAX_LIMIT) }}</span></div>
+     <div class="field wide"><label for="su-words">{{ t('suWords') }}</label><input id="su-words" v-model="words" class="input num" type="number" min="0" :max="MAX_LIMIT" required :aria-invalid="!inRange(words, MAX_LIMIT)"><span class="field-help">{{ tf('suWordsHelp', 0, MAX_LIMIT) }}</span></div>
     </div>
     <div class="line"><span class="grow faint-text">{{ tf('suToday', s.today, s.dailyLimit) }}</span><button class="btn btn-sm" :class="{ 'btn-primary': dirty }" :disabled="saving || !dirty || !valid">{{ t('save') }}</button></div>
    </form>
@@ -51,6 +53,7 @@ const saveNumbers = () => valid.value && dirty.value && save({ giftImages: Numbe
 .switch{align-items:flex-start}
 .switch input{flex:none;margin-top:2px}
 .nums{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
+.wide{grid-column:1/-1}
 .line{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 @media (max-width:420px){.nums{grid-template-columns:minmax(0,1fr)}}
 </style>
