@@ -1,13 +1,13 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import { Plus, MessagesSquare, Search, LayoutTemplate, Images, LayoutDashboard, Users, MonitorSmartphone, Tag, Bot, Ellipsis, UserRound, LogOut, Infinity as InfinityIcon, CalendarDays, Coins } from 'lucide-vue-next';
+import { Plus, MessagesSquare, Search, LayoutTemplate, Images, LayoutDashboard, Users, MonitorSmartphone, Tag, Globe, Bot, Ellipsis, UserRound, LogOut, Infinity as InfinityIcon, CalendarDays, Coins } from 'lucide-vue-next';
 import LoomiMark from './LoomiMark.vue';
 import { t, tf, n, me, isOwner, ready, view, section, projects, activePackages, packageLabel, searchOpen, go, logout, action } from '../core';
 // The side menu on wide screens: making, finding, management for the owner, and the wallet. It holds no chat list of its own: a column of titles
 // squeezed under management read badly and scrolled in its own little box, so chats have their own page and the search box over the page.
 // Phones use MobileBar instead.
 const menu = ref(false), menuRoot = ref(null);
-const ADMIN = [['overview', LayoutDashboard, 'shOverview'], ['users', Users, 'shUsers'], ['accounts', MonitorSmartphone, 'shAccounts'], ['templates', LayoutTemplate, 'shAdminTemplates'], ['pricing', Tag, 'shPricing'], ['bot', Bot, 'shBot']];
+const ADMIN = [['overview', LayoutDashboard, 'shOverview'], ['users', Users, 'shUsers'], ['accounts', MonitorSmartphone, 'shAccounts'], ['templates', LayoutTemplate, 'shAdminTemplates'], ['pricing', Tag, 'shPricing'], ['site', Globe, 'shSite'], ['bot', Bot, 'shBot']];
 const KIND_ICON = { Unlimited: InfinityIcon, Daily: CalendarDays, Credits: Coins };
 const pkg = computed(() => activePackages.value[0] || null);
 const initial = computed(() => (me.value?.username || '?').slice(0, 1));

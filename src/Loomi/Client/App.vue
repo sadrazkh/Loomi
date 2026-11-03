@@ -5,7 +5,7 @@ import AppSidebar from './components/AppSidebar.vue';
 import MobileBar from './components/MobileBar.vue';
 import TopBar from './components/TopBar.vue';
 import ChatSearch from './components/ChatSearch.vue';
-import LoginView from './views/LoginView.vue';
+import PublicView from './views/PublicView.vue';
 import HomeView from './views/HomeView.vue';
 import ChatView from './views/ChatView.vue';
 import ChatsView from './views/ChatsView.vue';
@@ -24,7 +24,7 @@ const closeSearch = () => { searchOpen.value = false; };
 </script>
 
 <template>
- <LoginView v-if="!authenticated"/>
+ <PublicView v-if="!authenticated"/>
  <div v-else class="shell" :class="{ 'in-chat': view==='chat' }">
   <AppSidebar/>
   <div class="stage">

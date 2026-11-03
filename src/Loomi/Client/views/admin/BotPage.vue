@@ -2,6 +2,8 @@
 import { ref, computed, onMounted } from 'vue';
 import { Bot, KeyRound, Trash2, ShieldCheck, Send, Moon, BellRing, Users, AlertTriangle } from 'lucide-vue-next';
 import TelegramConnect from '../../components/TelegramConnect.vue';
+import SignupCard from './SignupCard.vue';
+import NotifyCard from './NotifyCard.vue';
 import { t, api, action, busy, locale } from '../../core';
 // The workspace's Telegram bot: setting it up, the owner's own chat with it, the nightly summary, and what the bot sends to whom.
 const tg = ref(null), token = ref(''), confirming = ref(false), saving = ref(false), error = ref(''), daily = ref(null);
@@ -76,6 +78,8 @@ const MEMBER_SENDS = ['btMemberMake', 'btMemberReminders', 'btMemberGranted', 'b
    </div>
 
    <div class="side">
+    <SignupCard/>
+    <NotifyCard/>
     <section class="card" aria-labelledby="bt-daily">
      <div class="card-head"><h2 id="bt-daily"><Moon/>{{ t('usageDaily') }}</h2></div>
      <p class="muted-text">{{ t('usageDailyHelp') }}</p>

@@ -20,6 +20,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<AppSetting> Settings => Set<AppSetting>();
     public DbSet<BotRequest> BotRequests => Set<BotRequest>();
     public DbSet<CreditPackage> CreditPackages => Set<CreditPackage>();
+    public DbSet<LoginLink> LoginLinks => Set<LoginLink>();
     // No global query filter on UserId: the dispatcher runs without a user and would silently read an empty database.
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -78,5 +79,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<CreditPackage>().Property(x => x.Name).HasMaxLength(80);
         b.Entity<CreditPackage>().Property(x => x.Note).HasMaxLength(400);
         b.Entity<CreditPackage>().HasIndex(x => new { x.UserId, x.EndsAt });
+        b.Entity<LoginLink>().HasKey(x => x.Hash);
+        b.Entity<LoginLink>().Property(x => x.Hash).HasMaxLength(64);
+        b.Entity<LoginLink>().HasIndex(x => x.UserId);
+        b.Entity<PromptTemplate>().Property(x => x.StarterKey).HasMaxLength(64);
+        b.Entity<PromptTemplate>().HasIndex(x => x.StarterKey).IsUnique().HasFilter("\"StarterKey\" IS NOT NULL");
     }
 }

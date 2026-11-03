@@ -30,6 +30,8 @@ public class AppUser
     public int DailyQuota { get; set; }
     public bool IsDisabled { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>Signed themselves up from the bot rather than being added by the owner. Such an account has no password until the person sets one.</summary>
+    public bool FromBot { get; set; }
 }
 /// <summary>One connected account of one provider. A browser account has a profile; an API account has a secret.</summary>
 public class ProviderAccount
@@ -124,6 +126,10 @@ public class PromptTemplate
     public int Order { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>When people were told about it in the bot; null until then, so a template is announced once.</summary>
+    public DateTime? AnnouncedAt { get; set; }
+    /// <summary>Which template of the starter pack this came from, so adding the pack twice does not add it twice. Null for the owner's own.</summary>
+    public string? StarterKey { get; set; }
 }
 /// <summary>Work that was asked for in a Telegram chat, and the message there that says where it stands. It is how the result finds its way back to
 /// that chat wherever the work lives: a template's or an edit's project is not the bot's own.</summary>
@@ -194,6 +200,8 @@ public class CreditPackage
     /// <summary>Stamped once the ending-soon reminder was handled, even with no chat to send it to, so it is never tried again.</summary>
     public DateTime? ReminderSentAt { get; set; }
     public DateTime? EndNoticeSentAt { get; set; }
+    /// <summary>Given away rather than paid for, such as the images a new account starts with: what it pays for carries the small watermark.</summary>
+    public bool IsGift { get; set; }
 }
 /// <summary>What one generation costs. Operation null is the provider's default; a specific operation overrides it.</summary>
 public class PricingRule
@@ -224,6 +232,20 @@ public class TelegramLink
     public DateTime LinkedAt { get; set; } = DateTime.UtcNow;
     /// <summary>The project this chat is talking in: its next message continues that conversation. Null starts a new project, which is what /new asks for.</summary>
     public Guid? ProjectId { get; set; }
+    /// <summary>The person asked for no more news from the bot. Replies to their own work and reminders about their own packages still come.</summary>
+    public bool NotificationsOff { get; set; }
+    /// <summary>When this chat was last invited back after going quiet, so nobody is chased.</summary>
+    public DateTime? LastNudgeAt { get; set; }
+    /// <summary>When this chat was last told its credits are running out, so it is said once and not at every request.</summary>
+    public DateTime? LowCreditNudgeAt { get; set; }
+}
+/// <summary>A one-time way into the web for an account that signed up in the bot and has no password. Only its hash is kept.</summary>
+public class LoginLink
+{
+    public string Hash { get; set; } = "";
+    public Guid UserId { get; set; }
+    public DateTime ExpiresAt { get; set; }
+    public DateTime? UsedAt { get; set; }
 }
 /// <summary>A short-lived code a user quotes to the bot to prove the chat is theirs.</summary>
 public class LinkCode

@@ -1,7 +1,7 @@
 namespace Loomi.Telegram;
 /// <summary>What the bot says, in both languages. It cannot share the Vue table: that one is a browser bundle, and nothing on the server can read it.
 /// Failure keys are the safe error codes themselves, so a code from anywhere in the server turns into a sentence without a second mapping to keep in step.</summary>
-public static class BotMessages
+public static partial class BotMessages
 {
     /// <summary>Telegram sends a full tag such as "fa-IR"; the language is the part before the region.</summary>
     public static bool IsPersian(string? languageCode) => languageCode?.StartsWith("fa", StringComparison.OrdinalIgnoreCase) == true;
@@ -13,7 +13,7 @@ public static class BotMessages
     public static string Digits(string text, bool persian) => persian ? string.Concat(text.Select(c => char.IsAsciiDigit(c) ? (char)('\u06F0' + (c - '0')) : c)) : text;
     public static string Text(string key, bool persian, params object[] args)
     {
-        var (en, fa) = Table.TryGetValue(key, out var found) ? found : Table["AutomationFailed"];
+        var (en, fa) = Table.TryGetValue(key, out var found) || SignupTable.TryGetValue(key, out found) || NotifyTable.TryGetValue(key, out found) ? found : Table["AutomationFailed"];
         return args.Length == 0 ? (persian ? fa : en) : string.Format(persian ? fa : en, args);
     }
     private static readonly Dictionary<string, (string En, string Fa)> Table = new(StringComparer.Ordinal)

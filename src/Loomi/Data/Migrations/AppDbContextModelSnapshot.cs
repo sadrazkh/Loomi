@@ -88,6 +88,9 @@ namespace Loomi.Data.Migrations
                     b.Property<int>("DailyQuota")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("FromBot")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("IsDisabled")
                         .HasColumnType("INTEGER");
 
@@ -202,6 +205,9 @@ namespace Loomi.Data.Migrations
 
                     b.Property<DateTime>("EndsAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsGift")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int>("Kind")
                         .HasColumnType("INTEGER");
@@ -394,6 +400,28 @@ namespace Loomi.Data.Migrations
                     b.ToTable("LinkCodes");
                 });
 
+            modelBuilder.Entity("Loomi.Models.LoginLink", b =>
+                {
+                    b.Property<string>("Hash")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Hash");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("LoginLinks");
+                });
+
             modelBuilder.Entity("Loomi.Models.PricingRule", b =>
                 {
                     b.Property<Guid>("Id")
@@ -421,6 +449,9 @@ namespace Loomi.Data.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("AnnouncedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("CategoryId")
@@ -463,6 +494,10 @@ namespace Loomi.Data.Migrations
                     b.Property<bool>("SendSample")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("StarterKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(80)
@@ -472,6 +507,10 @@ namespace Loomi.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("StarterKey")
+                        .IsUnique()
+                        .HasFilter("\"StarterKey\" IS NOT NULL");
 
                     b.HasIndex("CategoryId", "Order");
 
@@ -532,8 +571,17 @@ namespace Loomi.Data.Migrations
                     b.Property<long>("ChatId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime?>("LastNudgeAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("LinkedAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LowCreditNudgeAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("NotificationsOff")
+                        .HasColumnType("INTEGER");
 
                     b.Property<Guid?>("ProjectId")
                         .HasColumnType("TEXT");

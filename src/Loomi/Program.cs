@@ -102,6 +102,7 @@ builder.Services.AddSingleton<PasswordService>();
 builder.Services.AddScoped<ProjectRepository>();
 builder.Services.AddScoped<GenerationService>();
 builder.Services.AddScoped<UsageReport>();
+builder.Services.AddScoped<GrowthSettings>();
 builder.Services.Configure<ReportOptions>(builder.Configuration.GetSection("Reports"));
 builder.Services.AddScoped<TemplateService>();
 builder.Services.AddHostedService<GenerationWorker>();

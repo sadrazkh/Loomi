@@ -69,10 +69,12 @@ export async function action(fn) { if (busy.value) return; busy.value = true; er
 
 export async function session() {
   const s = await api('/api/session'); csrf = s.csrfToken; authenticated.value = s.authenticated;
-  me.value = s.authenticated ? { username: s.username, role: s.role, dailyQuota: s.dailyQuota, dailyUsed: s.dailyUsed, dailyRemaining: s.dailyRemaining, credits: s.credits } : null;
+  me.value = s.authenticated ? { username: s.username, role: s.role, dailyQuota: s.dailyQuota, dailyUsed: s.dailyUsed, dailyRemaining: s.dailyRemaining, credits: s.credits, hasPassword: s.hasPassword !== false, fromBot: !!s.fromBot } : null;
   devKey.value = s.devAccessKey || '';
 }
 export async function login(username, password) { await api('/api/session/login', 'POST', { username, password }); await session(); await start(); }
+/** Into the web through the one-time link the bot gives an account that signed up there. */
+export async function loginWithLink(code) { await api('/api/session/link', 'POST', { code }); await session(); go('home'); await start(); }
 export async function logout() {
   await api('/api/session/logout', 'POST'); await hub?.stop(); hub = null;
   authenticated.value = false; me.value = null; projects.value = []; current.value = null; generations.value = []; packages.value = [];
@@ -119,7 +121,7 @@ export async function boot() {
 // Pages: home, chat (with an id), chats (the phone's list), templates, gallery, account, admin (with a section).
 // 'loading' until the address has been read, so a reload into a chat does not show home first.
 export const view = ref('loading'), section = ref('overview');
-export const ADMIN_SECTIONS = ['overview', 'users', 'accounts', 'templates', 'pricing', 'bot'];
+export const ADMIN_SECTIONS = ['overview', 'users', 'accounts', 'templates', 'pricing', 'site', 'bot'];
 /** Moves to a page by changing the address; the hashchange listener does the rest, so every way of getting there behaves the same. */
 export function go(page, arg) {
   const hash = '#/' + [page, arg].filter(Boolean).join('/');
